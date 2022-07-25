@@ -1,0 +1,25 @@
+{
+    "name": "initphp/sessions",
+    "description": "InitPHP Session Manager",
+    "keywords": ["php", "session", "initphp"],
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "InitPHP\\Sessions\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Muhammet ŞAFAK",
+            "email": "info@muhammetsafak.com.tr",
+            "role": "Developer",
+            "homepage": "https://www.muhammetsafak.com.tr"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {
+        "php": ">=7.2",
+        "initphp/parameterbag": "^1.1"
+    }
+}
