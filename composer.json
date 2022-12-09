@@ -1,7 +1,7 @@
 {
     "name": "initphp/sessions",
-    "description": "InitPHP Session Manager",
-    "keywords": ["php", "session", "initphp"],
+    "description": "InitPHP Sessions Manager",
+    "keywords": ["initphp", "sessions", "session", "session handler", "cookie", "memcache", "memcached", "mongodb", "pdo", "mysql", "postgresql", "postgres", "sql", "sqlite", "redis"],
     "type": "library",
     "license": "MIT",
     "autoload": {
@@ -13,13 +13,12 @@
         {
             "name": "Muhammet ŞAFAK",
             "email": "info@muhammetsafak.com.tr",
-            "role": "Developer",
-            "homepage": "https://www.muhammetsafak.com.tr"
+            "homepage": "https://www.muhammetsafak.com.tr",
+            "role": "Developer"
         }
     ],
     "minimum-stability": "stable",
     "require": {
-        "php": ">=7.2",
-        "initphp/parameterbag": "^1.1"
+        "php": ">=7.4"
     }
 }
