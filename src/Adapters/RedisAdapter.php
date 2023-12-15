@@ -30,31 +30,29 @@ class RedisAdapter extends \InitPHP\Sessions\AbstractAdapter implements \InitPHP
     private ?string $prefix;
 
     /**
-     * @param \Redis|array $redis
-     * @param int $database
-     * @param int $ttl
-     * @param string|null $prefix
+     * @param array $options
+     * @throws SessionException
      */
-    public function __construct($redis, int $database = 0, int $ttl = 864000, ?string $prefix = null)
+    public function __construct(array $options)
     {
         if (!extension_loaded('redis')) {
             throw new SessionNotSupportedAdapter();
         }
 
-        $this->ttl = $ttl;
-        $this->database = $database;
-        $this->prefix = $prefix;
+        $this->ttl = $options['ttl'] ?? 864000;
+        $this->database = $options['database'] ?? 0;
+        $this->prefix = $options['prefix'] ?? null;
 
-        if ($redis instanceof \Redis) {
-            $this->redis = $redis;
-        } elseif (is_array($redis)) {
+        if ($options['redis'] instanceof \Redis) {
+            $this->redis = $options['redis'];
+        } elseif (is_array($options['redis'])) {
             try {
                 $this->redis = new \Redis();
 
-                if(!$this->redis->connect($redis['host'], $redis['port'], ($redis['timeout'] ?? 0))){
+                if(!$this->redis->connect($options['redis']['host'], $options['redis']['port'], ($options['redis']['timeout'] ?? 0))){
                     throw new \Exception('Redis Cache connection failed.');
                 }
-                $password = $redis['password'] ?? null;
+                $password = $options['redis']['password'] ?? null;
                 if($password !== null && !$this->redis->auth($password)){
                     throw new \Exception('Redis Cache authentication failed.');
                 }

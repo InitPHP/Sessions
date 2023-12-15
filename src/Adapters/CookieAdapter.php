@@ -36,9 +36,9 @@ class CookieAdapter extends AbstractAdapter implements AdapterInterface
     /** @var \InitPHP\Encryption\HandlerInterface */
     private $encrypt;
 
-    public function __construct(string $cookieName, string $key, ?int $ttl = null)
+    public function __construct(array $options)
     {
-        $this->name = $cookieName;
+        $this->name = $options['name'];
 
         if (!class_exists("\\InitPHP\\Encryption\\Encrypt")) {
             throw new SessionNotSupportedAdapter('This adapter depends on the InitPHP Encryption library to work. Run the command : "composer require initphp/encryption"');
@@ -47,11 +47,11 @@ class CookieAdapter extends AbstractAdapter implements AdapterInterface
         $this->encrypt = \InitPHP\Encryption\Encrypt::use(\InitPHP\Encryption\OpenSSL::class, [
             'algo'      => 'SHA256',
             'cipher'    => 'AES-256-CTR',
-            'key'       => $key,
+            'key'       => $options['key'],
             'blocksize' => 16,
         ]);
 
-        $this->ttl = $ttl ?? 86400;
+        $this->ttl = $options['ttl'] ?? 86400;
 
         $this->_decode();
     }

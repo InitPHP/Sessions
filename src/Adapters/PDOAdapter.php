@@ -37,11 +37,11 @@ class PDOAdapter extends AbstractAdapter implements AdapterInterface
 
     protected bool $withIPAddress;
 
-    public function __construct(\PDO $pdo, string $table, bool $withIPAddress = false)
+    public function __construct(array $options)
     {
-        $this->pdo = $pdo;
-        $this->table = $table;
-        $this->withIPAddress = $withIPAddress;
+        $this->pdo = $options['pdo'];
+        $this->table = $options['table'];
+        $this->withIPAddress = $options['withIPAddress'] ?? false;
     }
 
     /**

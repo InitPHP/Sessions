@@ -26,7 +26,7 @@ class MongoDBAdapter extends \InitPHP\Sessions\AbstractAdapter implements \InitP
 
     private string $collection;
 
-    public function __construct(string $dsn, string $collection)
+    public function __construct(array $options)
     {
         if (
             !extension_loaded("MongoDB")
@@ -37,11 +37,11 @@ class MongoDBAdapter extends \InitPHP\Sessions\AbstractAdapter implements \InitP
             throw new SessionNotSupportedAdapter();
         }
         try {
-            $this->manager = new \MongoDB\Driver\Manager($dsn);
+            $this->manager = new \MongoDB\Driver\Manager($options['dsn']);
         }catch (\Exception $e) {
             throw new SessionException("MongoDB connection failed." . $e->getMessage(), (int)$e->getCode());
         }
-        $this->collection = $collection;
+        $this->collection = $options['collection'];
     }
 
     /**

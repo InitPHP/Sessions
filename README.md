@@ -52,7 +52,10 @@ $adapter = new RedisAdapter([
     'port'      => 6379, // int
     'timeout'   => 0, // int
     'password'  => null, // null or string
-], 0, 86400, 'sess');
+    'database'  => 0,
+    'ttl'       => 86400,
+    'prefix'    => 'sess'
+]);
 
 Session::createImmutable($adapter)
     ->start();
@@ -67,7 +70,7 @@ use InitPHP\Sessions\Adapters\PDOAdapter;
 
 $pdo = new \PDO('mysql:host=localhost;dbname=test', 'root', '');
 
-$adapter = new PDOAdapter($pdo, 'app_sessions');
+$adapter = new PDOAdapter(['pdo' => $pdo, 'table' => 'app_sessions']);
 
 Session::createImmutable($adapter)
     ->start();
@@ -113,7 +116,7 @@ require_once "vendor/autoload.php";
 use InitPHP\Sessions\Session;
 use InitPHP\Sessions\Adapters\CookieAdapter;
 
-$adapter = new CookieAdapter('sessDataCookieName', 'topSecretAppKey', 86400);
+$adapter = new CookieAdapter(['name' => 'sessDataCookieName', 'key' => 'topSecretAppKey', 'ttl' => 86400]);
 
 Session::createImmutable($adapter)
     ->start();
@@ -126,7 +129,7 @@ require_once "vendor/autoload.php";
 use InitPHP\Sessions\Session;
 use InitPHP\Sessions\Adapters\MongoDBAdapter;
 
-$adapter = new MongoDBAdapter('mongodb://127.0.0.1:27017', 'sessDbName.sessCollectionName');
+$adapter = new MongoDBAdapter(['dsn' => 'mongodb://127.0.0.1:27017', 'collation' => 'sessDbName.sessCollectionName']);
 
 Session::createImmutable($adapter)
     ->start();
