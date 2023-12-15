@@ -39,7 +39,11 @@ class PDOAdapter extends AbstractAdapter implements AdapterInterface
 
     public function __construct(array $options)
     {
-        $this->pdo = $options['pdo'];
+        if (isset($options['pdo'])) {
+            $this->pdo = $options['pdo'];
+        } else {
+            $this->pdo = new \PDO($options['dsn'], $options['username'], $options['password']);
+        }
         $this->table = $options['table'];
         $this->withIPAddress = $options['withIPAddress'] ?? false;
     }
