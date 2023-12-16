@@ -34,21 +34,21 @@ class FileAdapter extends AbstractAdapter implements AdapterInterface
     }
 
 
-    public function read($id)
+    public function read(string $id): string|false
     {
         $id = $this->prefix . $id;
 
         return (string) @file_get_contents("{$this->path}/$id");
     }
 
-    public function write($id, $data)
+    public function write(string $id, string $data): bool
     {
         $id = $this->prefix . $id;
 
         return file_put_contents("{$this->path}/$id", $data) !== false;
     }
 
-    public function destroy($id)
+    public function destroy(string $id): bool
     {
         $id = $this->prefix . $id;
 
@@ -60,7 +60,7 @@ class FileAdapter extends AbstractAdapter implements AdapterInterface
         return true;
     }
 
-    public function gc($max_lifetime)
+    public function gc(int $max_lifetime): int|false
     {
         $files = glob("{$this->path}/{$this->prefix}*");
         $currentTime = time();
@@ -71,7 +71,7 @@ class FileAdapter extends AbstractAdapter implements AdapterInterface
             }
         }
 
-        return true;
+        return $max_lifetime;
     }
 
 }

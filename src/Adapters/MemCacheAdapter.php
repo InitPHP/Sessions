@@ -78,12 +78,12 @@ class MemCacheAdapter extends \InitPHP\Sessions\AbstractAdapter implements \Init
     /**
      * @inheritDoc
      */
-    public function destroy($id)
+    public function destroy(string $id): bool
     {
         try {
             $session = $this->credentials['prefix'] . $id;
 
-            return $this->getMemcache()->delete($session) !== FALSE;
+            return $this->getMemcache()->delete($session) !== false;
         } catch (\Exception $e) {
             return false;
         }
@@ -92,7 +92,7 @@ class MemCacheAdapter extends \InitPHP\Sessions\AbstractAdapter implements \Init
     /**
      * @inheritDoc
      */
-    public function read($id)
+    public function read(string $id): string|false
     {
         try {
             $session = $this->credentials['prefix'] . $id;
@@ -114,7 +114,7 @@ class MemCacheAdapter extends \InitPHP\Sessions\AbstractAdapter implements \Init
     /**
      * @inheritDoc
      */
-    public function write($id, $data)
+    public function write(string $id, string $data): bool
     {
         try {
             $session = $this->credentials['prefix'] . $id;
@@ -129,7 +129,7 @@ class MemCacheAdapter extends \InitPHP\Sessions\AbstractAdapter implements \Init
                 default:
                     $res = false;
             }
-            return $res;
+            return $res !== false;
         } catch (\Exception $e) {
             return false;
         }

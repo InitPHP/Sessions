@@ -3,7 +3,7 @@
 
 ## Requirements
 
-- PHP 7.4 or later
+- PHP 8.0 or later
 
 **Note :** Adapters used may have different dependencies.
 

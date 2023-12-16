@@ -73,10 +73,10 @@ class RedisAdapter extends \InitPHP\Sessions\AbstractAdapter implements \InitPHP
     /**
      * @inheritDoc
      */
-    public function destroy($id)
+    public function destroy(string $id): bool
     {
         try {
-            return $this->redis->del($this->prefix . $id) !== FALSE;
+            return $this->redis->del($this->prefix . $id) !== false;
         } catch (\Exception $e) {
             return false;
         }
@@ -85,10 +85,12 @@ class RedisAdapter extends \InitPHP\Sessions\AbstractAdapter implements \InitPHP
     /**
      * @inheritDoc
      */
-    public function read($id)
+    public function read(string $id): string|false
     {
         try {
-            return (string)$this->redis->get($this->prefix . $id);
+            $data = $this->redis->get($this->prefix . $id);
+
+            return $data !== false ? (string)$data : false;
         } catch (\Exception $e) {
             return false;
         }
@@ -97,11 +99,11 @@ class RedisAdapter extends \InitPHP\Sessions\AbstractAdapter implements \InitPHP
     /**
      * @inheritDoc
      */
-    public function write($id, $data)
+    public function write(string $id, string $data): bool
     {
         try {
             $set = $this->redis->set($this->prefix . $id, $data);
-            if($set === FALSE){
+            if($set === false){
                 return false;
             }
             $this->redis->expireAt($this->prefix . $id, time() + $this->ttl);

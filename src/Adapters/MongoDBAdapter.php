@@ -47,7 +47,7 @@ class MongoDBAdapter extends \InitPHP\Sessions\AbstractAdapter implements \InitP
     /**
      * @inheritDoc
      */
-    public function destroy($id)
+    public function destroy(string $id): bool
     {
         try {
             $bulkWrite = new \MongoDB\Driver\BulkWrite();
@@ -65,7 +65,7 @@ class MongoDBAdapter extends \InitPHP\Sessions\AbstractAdapter implements \InitP
     /**
      * @inheritDoc
      */
-    public function read($id)
+    public function read(string $id): string|false
     {
         try {
             $query = new \MongoDB\Driver\Query(['_id' => $id]);
@@ -84,7 +84,7 @@ class MongoDBAdapter extends \InitPHP\Sessions\AbstractAdapter implements \InitP
     /**
      * @inheritDoc
      */
-    public function write($id, $data)
+    public function write(string $id, string $data): bool
     {
         try {
             $bulkWrite = new \MongoDB\Driver\BulkWrite();
@@ -95,7 +95,7 @@ class MongoDBAdapter extends \InitPHP\Sessions\AbstractAdapter implements \InitP
 
             unset($bulkWrite);
 
-            return $res->isAcknowledged() !== FALSE;
+            return $res->isAcknowledged() !== false;
         } catch (\Exception $e) {
             return false;
         }

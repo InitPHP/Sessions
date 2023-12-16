@@ -59,29 +59,26 @@ class CookieAdapter extends AbstractAdapter implements AdapterInterface
     /**
      * @inheritDoc
      */
-    public function destroy($id)
+    public function destroy(string $id): bool
     {
-        setcookie($this->name, '', (time() - 86400));
+        return setcookie($this->name, '', (time() - 86400)) !== false;
     }
 
     /**
      * @inheritDoc
      */
-    public function gc($max_lifetime)
+    public function gc(int $max_lifetime): int|false
     {
-        if (!is_int($max_lifetime) || $max_lifetime < 0) {
-            throw new SessionException();
-        }
         if ($this->ttl != $max_lifetime) {
             $this->ttl = $max_lifetime;
         }
-        return true;
+        return $max_lifetime;
     }
 
     /**
      * @inheritDoc
      */
-    public function read($id)
+    public function read(string $id): string|false
     {
         if(!isset($this->data)){
             $this->_decode();
@@ -92,11 +89,11 @@ class CookieAdapter extends AbstractAdapter implements AdapterInterface
     /**
      * @inheritDoc
      */
-    public function write($id, $data)
+    public function write(string $id, string $data): bool
     {
         $this->data = $data;
         $value = base64_encode($this->encrypt->encrypt($data));
-        return setcookie($this->name, $value, (time() + $this->ttl));
+        return setcookie($this->name, $value, (time() + $this->ttl)) !== false;
     }
 
     private function _decode(): void

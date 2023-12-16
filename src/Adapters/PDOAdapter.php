@@ -51,7 +51,7 @@ class PDOAdapter extends AbstractAdapter implements AdapterInterface
     /**
      * @inheritDoc
      */
-    public function destroy($id)
+    public function destroy(string $id): bool
     {
         try {
             $arguments = [
@@ -64,7 +64,7 @@ class PDOAdapter extends AbstractAdapter implements AdapterInterface
             }
 
             $stmt = $this->query($sql, $arguments);
-            return $stmt !== FALSE && $stmt->rowCount() > 0;
+            return $stmt !== false && $stmt->rowCount() > 0;
         } catch (\Exception $e) {
             return false;
         }
@@ -73,7 +73,7 @@ class PDOAdapter extends AbstractAdapter implements AdapterInterface
     /**
      * @inheritDoc
      */
-    public function read($id)
+    public function read(string $id): string|false
     {
         try {
             $arguments = [
@@ -86,7 +86,7 @@ class PDOAdapter extends AbstractAdapter implements AdapterInterface
             }
             $sql .= " LIMIT 0, 1";
             $stmt = $this->query($sql, $arguments);
-            if ($stmt === FALSE) {
+            if ($stmt === false) {
                 return false;
             }
             if ($stmt->rowCount() < 1) {
@@ -102,7 +102,7 @@ class PDOAdapter extends AbstractAdapter implements AdapterInterface
     /**
      * @inheritDoc
      */
-    public function write($id, $data)
+    public function write(string $id, string $data): bool
     {
         try {
             $stmt = $this->query("REPLACE INTO " . $this->table . " (id, sess_timestamp, sess_ip_address, sess_data) VALUES (:sess_id, :sess_data, :sess_timestamp, :ip_address);", [
@@ -112,13 +112,13 @@ class PDOAdapter extends AbstractAdapter implements AdapterInterface
                 ':ip_address'           => $this->getIP(),
             ]);
 
-            return $stmt !== FALSE && $stmt->rowCount() > 0;
+            return $stmt !== false && $stmt->rowCount() > 0;
         } catch (\Exception $e) {
             return false;
         }
     }
 
-    private function query(string $query, ?array $arguments = null)
+    private function query(string $query, ?array $arguments = null): bool|\PDOStatement
     {
         $stmt = $this->pdo->prepare($query);
         if ($stmt === FALSE) {

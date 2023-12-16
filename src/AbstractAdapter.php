@@ -19,7 +19,7 @@ abstract class AbstractAdapter implements Interfaces\AdapterInterface
     /**
      * @inheritDoc
      */
-    public function close()
+    public function close(): bool
     {
         return true;
     }
@@ -27,12 +27,20 @@ abstract class AbstractAdapter implements Interfaces\AdapterInterface
     /**
      * @inheritDoc
      */
-    abstract public function destroy($id);
+    abstract public function destroy(string $id): bool;
 
     /**
      * @inheritDoc
      */
-    public function gc($max_lifetime)
+    public function gc(int $max_lifetime): int|false
+    {
+        return $max_lifetime;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function open(string $path, string $name): bool
     {
         return true;
     }
@@ -40,20 +48,12 @@ abstract class AbstractAdapter implements Interfaces\AdapterInterface
     /**
      * @inheritDoc
      */
-    public function open($path, $name)
-    {
-        return true;
-    }
+    abstract public function read(string $id): string|false;
 
     /**
      * @inheritDoc
      */
-    abstract public function read($id);
-
-    /**
-     * @inheritDoc
-     */
-    abstract public function write($id, $data);
+    abstract public function write(string $id, string $data): bool;
 
 
 }
