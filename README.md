@@ -135,6 +135,44 @@ Session::createImmutable($adapter)
     ->start();
 ```
 
+## Migrating from `initphp/redis-session-handler`
+
+The standalone [`initphp/redis-session-handler`](https://github.com/InitPHP/RedisSessionHandler) package has been deprecated in favor of this one. The `RedisAdapter` shipped here is a superset of the old handler: it adds TTL support, typed exceptions, and the unified `Session` API.
+
+**Before** (`initphp/redis-session-handler`):
+
+```php
+$redis = new \InitPHP\Redis\Redis([
+    'host' => '127.0.0.1',
+    'port' => 6379,
+]);
+
+$handler = new \InitPHP\RedisSessionHandler\Handler($redis);
+session_set_save_handler($handler, true);
+session_start();
+```
+
+**After** (this package — `initphp/sessions`):
+
+```php
+use InitPHP\Sessions\Session;
+use InitPHP\Sessions\Adapters\RedisAdapter;
+
+$adapter = new RedisAdapter([
+    'host'     => '127.0.0.1',
+    'port'     => 6379,
+    'database' => 0,
+    'ttl'      => 86400,
+    'prefix'   => 'sess_',
+]);
+
+Session::createImmutable($adapter)->start();
+```
+
+Notes:
+- The legacy handler used the [`initphp/redis`](https://github.com/InitPHP/Redis) wrapper. This adapter talks directly to `ext-redis` (or an existing `\Redis` instance passed via the `redis` option), so that wrapper is no longer required.
+- Session keys are still prefixed; pass the `prefix` option if you want to retain the previous `sess_` prefix exactly.
+
 ## Credits
 
 - [Muhammet ŞAFAK](https://github.com/muhammetsafak) <<info@muhammetsafak.com.tr>>
