@@ -1,0 +1,18 @@
+parameters:
+    level: 8
+    paths:
+        - src
+        - tests
+    stubFiles:
+        - phpstan/stubs/extensions.stub
+    tmpDir: .phpstan.cache
+    treatPhpDocTypesAsCertain: false
+    reportUnmatchedIgnoredErrors: true
+    ignoreErrors:
+        # The Manager intentionally wraps native session_*() calls in a
+        # Throwable guard: when the host application installs an error handler
+        # that promotes E_WARNING to ErrorException, these calls *do* throw.
+        # PHPStan's bare stubs cannot see that, so it reports a dead catch.
+        -
+            message: '#Dead catch - Throwable is never thrown in the try block#'
+            path: src/Classes/Manager.php

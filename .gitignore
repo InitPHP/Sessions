@@ -2,4 +2,8 @@
 /.vscode/
 /.vs/
 /vendor/
+/build/
 /composer.lock
+/.phpunit.cache/
+/.phpstan.cache/
+/.php-cs-fixer.cache

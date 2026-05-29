@@ -1,4 +1,5 @@
 <?php
+
 /**
  * SessionNotSupportedAdapter.php
  *
@@ -7,12 +8,23 @@
  * @author     Muhammet ŞAFAK <info@muhammetsafak.com.tr>
  * @copyright  Copyright © 2022 Muhammet ŞAFAK
  * @license    ./LICENSE  MIT
- * @version    2.0
  * @link       https://www.muhammetsafak.com.tr
  */
 
+declare(strict_types=1);
+
 namespace InitPHP\Sessions\Exceptions;
 
-class SessionNotSupportedAdapter extends \RuntimeException
+use RuntimeException;
+
+/**
+ * Raised when an adapter cannot be used in the current environment because a
+ * required PHP extension or third-party library is missing.
+ */
+class SessionNotSupportedAdapter extends RuntimeException
 {
+    public function __construct(string $message = 'The requested session adapter is not supported in this environment.', int $code = 0, ?\Throwable $previous = null)
+    {
+        parent::__construct($message, $code, $previous);
+    }
 }

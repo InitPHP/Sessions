@@ -1,0 +1,142 @@
+<?php
+
+/**
+ * Minimal stubs for the optional PHP extensions the adapters integrate with.
+ *
+ * They exist only so that PHPStan can analyse the adapters on machines (and CI
+ * jobs) where the extensions are not installed. They cover exactly the surface
+ * the package uses — nothing more.
+ */
+
+namespace {
+    class Redis
+    {
+        public function connect(string $host, int $port = 6379, float $timeout = 0): bool {}
+
+        /** @param mixed $credentials */
+        public function auth($credentials): bool {}
+
+        public function select(int $index): bool {}
+
+        /** @return mixed */
+        public function get(string $key) {}
+
+        /** @return Redis|bool */
+        public function set(string $key, mixed $value, mixed $options = null) {}
+
+        /** @return Redis|bool */
+        public function setex(string $key, int $ttl, mixed $value) {}
+
+        /** @return Redis|int|false */
+        public function del(string ...$keys) {}
+    }
+
+    class Memcache
+    {
+        public function connect(string $host, int $port = 11211, int $timeout = 1): bool {}
+
+        public function addServer(string $host, int $port = 11211, bool $persistent = true, int $weight = 0): bool {}
+
+        /** @return mixed */
+        public function get(mixed $key, mixed &$flags = null) {}
+
+        public function set(mixed $key, mixed $value, int $flag = 0, int $expire = 0): bool {}
+
+        public function delete(mixed $key, int $timeout = 0): bool {}
+
+        public function close(): bool {}
+    }
+
+    class Memcached
+    {
+        public const OPT_BINARY_PROTOCOL = 18;
+        public const RES_NOTFOUND = 16;
+        public const RES_SUCCESS = 0;
+
+        public function addServer(string $host, int $port, int $weight = 0): bool {}
+
+        public function setOption(int $option, mixed $value): bool {}
+
+        /** @return array<string, mixed>|false */
+        public function getStats(?string $type = null) {}
+
+        /** @return mixed */
+        public function get(string $key) {}
+
+        public function getResultCode(): int {}
+
+        public function set(string $key, mixed $value, int $expiration = 0): bool {}
+
+        public function delete(string $key, int $time = 0): bool {}
+
+        public function quit(): bool {}
+    }
+}
+
+namespace MongoDB\Driver {
+    class Manager
+    {
+        /**
+         * @param array<string, mixed> $uriOptions
+         * @param array<string, mixed> $driverOptions
+         */
+        public function __construct(?string $uri = null, array $uriOptions = [], array $driverOptions = []) {}
+
+        public function executeQuery(string $namespace, Query $query): Cursor {}
+
+        public function executeBulkWrite(string $namespace, BulkWrite $bulk): WriteResult {}
+    }
+
+    class Query
+    {
+        /**
+         * @param array<string, mixed> $filter
+         * @param array<string, mixed> $queryOptions
+         */
+        public function __construct(array $filter, array $queryOptions = []) {}
+    }
+
+    class BulkWrite
+    {
+        /**
+         * @param array<string, mixed> $document
+         * @return mixed
+         */
+        public function insert(array $document) {}
+
+        /**
+         * @param array<string, mixed> $filter
+         * @param array<string, mixed> $newObj
+         * @param array<string, mixed> $updateOptions
+         */
+        public function update(array $filter, array $newObj, array $updateOptions = []): void {}
+
+        /**
+         * @param array<string, mixed> $filter
+         * @param array<string, mixed> $deleteOptions
+         */
+        public function delete(array $filter, array $deleteOptions = []): void {}
+    }
+
+    /**
+     * @implements \IteratorAggregate<int, object>
+     */
+    class Cursor implements \IteratorAggregate
+    {
+        /** @return array<int, object> */
+        public function toArray(): array {}
+
+        public function getIterator(): \Iterator {}
+    }
+
+    class WriteResult
+    {
+        public function isAcknowledged(): bool {}
+
+        public function getDeletedCount(): ?int {}
+
+        public function getModifiedCount(): ?int {}
+
+        public function getUpsertedCount(): ?int {}
+    }
+}

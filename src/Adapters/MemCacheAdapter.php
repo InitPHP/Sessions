@@ -1,4 +1,5 @@
 <?php
+
 /**
  * MemCacheAdapter.php
  *
@@ -7,53 +8,73 @@
  * @author     Muhammet ŞAFAK <info@muhammetsafak.com.tr>
  * @copyright  Copyright © 2022 Muhammet ŞAFAK
  * @license    ./LICENSE  MIT
- * @version    2.0
  * @link       https://www.muhammetsafak.com.tr
  */
 
+declare(strict_types=1);
+
 namespace InitPHP\Sessions\Adapters;
 
-use \InitPHP\Sessions\Exceptions\{SessionException, SessionNotSupportedAdapter};
+use InitPHP\Sessions\AbstractAdapter;
+use InitPHP\Sessions\Exceptions\SessionAdapterException;
+use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
+use Memcache;
+use Memcached;
+use Throwable;
+
+use function array_change_key_case;
+use function array_merge;
+use function class_exists;
 
 use const CASE_LOWER;
 
-use function extension_loaded;
-use function class_exists;
-use function array_merge;
-use function array_change_key_case;
-use function is_string;
-class MemCacheAdapter extends \InitPHP\Sessions\AbstractAdapter implements \InitPHP\Sessions\Interfaces\AdapterInterface
+/**
+ * Stores sessions in Memcache/Memcached.
+ *
+ * Auto-detects which driver is available, preferring the modern `Memcached`
+ * extension over the legacy `Memcache` one when both are present.
+ *
+ * Supported options (case-insensitive keys):
+ *  - `host`   (string) Defaults to `127.0.0.1`.
+ *  - `port`   (int)    Defaults to `11211`.
+ *  - `weight` (int)    Server weight. Defaults to `1`.
+ *  - `raw`    (bool)   Enables the binary protocol (Memcached only).
+ *  - `prefix` (string) Key prefix. Defaults to none.
+ *  - `ttl`    (int)    Item expiry in seconds. Defaults to `86400`.
+ */
+class MemCacheAdapter extends AbstractAdapter
 {
-
     protected const DRIVER_MEMCACHE = 1;
     protected const DRIVER_MEMCACHED = 2;
 
-    /** @var \Memcache|\Memcached */
-    private $memcache;
+    private Memcache|Memcached $memcache;
 
     private int $driver;
 
+    /** @var array<string, mixed> */
     private array $credentials = [
-        'host'          => '127.0.0.1',
-        'port'          => 11211,
-        'weight'        => 1,
-        'raw'           => false,
-        'prefix'        => null,
-        'ttl'           => 86400,
+        'host'   => '127.0.0.1',
+        'port'   => 11211,
+        'weight' => 1,
+        'raw'    => false,
+        'prefix' => '',
+        'ttl'    => 86400,
     ];
 
-    public function __construct(?array $credentials = null)
+    /**
+     * @param array<string, mixed> $credentials
+     * @throws SessionNotSupportedAdapter When neither extension is available.
+     */
+    public function __construct(array $credentials = [])
     {
-        if(FALSE === (extension_loaded('memcache') || extension_loaded('memcached'))){
-            throw new SessionNotSupportedAdapter();
-        }
-        if (class_exists("\\Memcache")) {
-            $this->driver = self::DRIVER_MEMCACHE;
-        } elseif (class_exists("\\Memcached")) {
+        if (class_exists(Memcached::class)) {
             $this->driver = self::DRIVER_MEMCACHED;
+        } elseif (class_exists(Memcache::class)) {
+            $this->driver = self::DRIVER_MEMCACHE;
         } else {
-            throw new SessionNotSupportedAdapter();
+            throw new SessionNotSupportedAdapter('The MemCacheAdapter requires the "memcached" or "memcache" PHP extension.');
         }
+
         $this->credentials = array_merge($this->credentials, array_change_key_case($credentials, CASE_LOWER));
     }
 
@@ -63,117 +84,125 @@ class MemCacheAdapter extends \InitPHP\Sessions\AbstractAdapter implements \Init
             return;
         }
 
-        switch ($this->driver) {
-            case self::DRIVER_MEMCACHE:
-                $this->memcache->close();
-                break;
-            case self::DRIVER_MEMCACHED:
-                $this->memcache->quit();
-                break;
+        if ($this->memcache instanceof Memcache) {
+            $this->memcache->close();
+        } else {
+            $this->memcache->quit();
         }
 
         unset($this->memcache);
     }
 
-    /**
-     * @inheritDoc
-     */
-    public function destroy(string $id): bool
-    {
-        try {
-            $session = $this->credentials['prefix'] . $id;
-
-            return $this->getMemcache()->delete($session) !== false;
-        } catch (\Exception $e) {
-            return false;
-        }
-    }
-
-    /**
-     * @inheritDoc
-     */
     public function read(string $id): string|false
     {
         try {
-            $session = $this->credentials['prefix'] . $id;
-            switch ($this->driver) {
-                case self::DRIVER_MEMCACHE:
-                    $data = $this->getMemcache()->get($session, false);
-                    return is_string($data) ? $data : false;
-                case self::DRIVER_MEMCACHED:
-                    $data = $this->getMemcache()->get($session);
-                    return $this->getMemcache()->getResultCode() === \Memcached::RES_NOTFOUND ? false : $data;
-                default:
-                    return false;
+            $key = $this->key($id);
+            $client = $this->getMemcache();
+
+            if ($client instanceof Memcache) {
+                $data = $client->get($key);
+
+                return \is_string($data) ? $data : '';
             }
-        } catch (\Exception $e) {
+
+            $data = $client->get($key);
+            if ($client->getResultCode() === Memcached::RES_NOTFOUND) {
+                return '';
+            }
+
+            return \is_string($data) ? $data : '';
+        } catch (Throwable) {
             return false;
         }
     }
 
-    /**
-     * @inheritDoc
-     */
     public function write(string $id, string $data): bool
     {
         try {
-            $session = $this->credentials['prefix'] . $id;
+            $key = $this->key($id);
+            $ttl = (int) $this->credentials['ttl'];
+            $client = $this->getMemcache();
 
-            switch ($this->driver) {
-                case self::DRIVER_MEMCACHE:
-                    $res = $this->getMemcache()->set($session, $data, 0, $this->credentials['ttl']);
-                    break;
-                case self::DRIVER_MEMCACHED:
-                    $res = $this->getMemcache()->set($session, $data, $this->credentials['ttl']);
-                    break;
-                default:
-                    $res = false;
+            if ($client instanceof Memcache) {
+                return $client->set($key, $data, 0, $ttl) !== false;
             }
-            return $res !== false;
-        } catch (\Exception $e) {
+
+            return $client->set($key, $data, $ttl) !== false;
+        } catch (Throwable) {
             return false;
         }
     }
 
+    public function destroy(string $id): bool
+    {
+        try {
+            $this->getMemcache()->delete($this->key($id));
 
-    private function getMemcache()
+            return true;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    private function key(string $id): string
+    {
+        return (string) $this->credentials['prefix'] . $id;
+    }
+
+    private function host(): string
+    {
+        return (string) $this->credentials['host'];
+    }
+
+    private function port(): int
+    {
+        return (int) $this->credentials['port'];
+    }
+
+    private function weight(): int
+    {
+        return (int) $this->credentials['weight'];
+    }
+
+    /**
+     * Lazily creates and connects the underlying client.
+     *
+     * @throws SessionAdapterException When the connection cannot be opened.
+     */
+    private function getMemcache(): Memcache|Memcached
     {
         if (isset($this->memcache)) {
             return $this->memcache;
         }
 
         try {
-            switch ($this->driver) {
-                case self::DRIVER_MEMCACHE:
-                    $this->memcache = new \Memcache();
-                    $connection = $this->memcache->connect($this->credentials['host'], $this->credentials['port']);
-                    if ($connection === FALSE) {
-                        throw new \Exception("Memcache connection failed");
-                    }
+            if ($this->driver === self::DRIVER_MEMCACHE) {
+                $client = new Memcache();
+                if ($client->connect($this->host(), $this->port()) === false) {
+                    throw new SessionAdapterException('Memcache connection failed.');
+                }
+                $client->addServer($this->host(), $this->port(), true, $this->weight());
 
-                    $this->memcache->addServer($this->credentials['host'], $this->credentials['port'], true, $this->credentials['weight']);
-
-                    return $this->memcache;
-                case self::DRIVER_MEMCACHED:
-                    $this->memcache = new \Memcached();
-
-                    ($this->credentials['raw'] ?? FALSE) !== FALSE && $this->memcache->setOption(\Memcached::OPT_BINARY_PROTOCOL, true);
-
-                    $this->memcache->addServer($this->credentials['host'], $this->credentials['port'], $this->credentials['weight']);
-                    $stats = $this->memcache->getStats();
-                    $statKey = $this->credentials['host'] . ':' . $this->credentials['port'];
-
-                    if (!isset($stats[$statKey])) {
-                        throw new \Exception("Memcached connection failed");
-                    }
-
-                    return $this->memcache;
-                default:
-                    throw new \Exception("Memcached not supported.");
+                return $this->memcache = $client;
             }
-        } catch (\Exception $e) {
-            throw new SessionException($e->getMessage(), (int)$e->getCode());
+
+            $client = new Memcached();
+            if (($this->credentials['raw'] ?? false) !== false) {
+                $client->setOption(Memcached::OPT_BINARY_PROTOCOL, true);
+            }
+            $client->addServer($this->host(), $this->port(), $this->weight());
+
+            $statKey = $this->host() . ':' . $this->port();
+            $stats = $client->getStats();
+            if (!isset($stats[$statKey])) {
+                throw new SessionAdapterException('Memcached connection failed.');
+            }
+
+            return $this->memcache = $client;
+        } catch (SessionAdapterException $e) {
+            throw $e;
+        } catch (Throwable $e) {
+            throw new SessionAdapterException($e->getMessage(), (int) $e->getCode(), $e);
         }
     }
-
 }

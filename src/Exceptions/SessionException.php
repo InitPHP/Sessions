@@ -1,4 +1,5 @@
 <?php
+
 /**
  * SessionException.php
  *
@@ -7,12 +8,21 @@
  * @author     Muhammet ŞAFAK <info@muhammetsafak.com.tr>
  * @copyright  Copyright © 2022 Muhammet ŞAFAK
  * @license    ./LICENSE  MIT
- * @version    2.0
  * @link       https://www.muhammetsafak.com.tr
  */
 
+declare(strict_types=1);
+
 namespace InitPHP\Sessions\Exceptions;
 
-class SessionException extends \Exception
+use Exception;
+
+/**
+ * Base exception for every error raised by the package.
+ *
+ * Catching this type catches all package-level runtime failures, including
+ * {@see SessionAdapterException}.
+ */
+class SessionException extends Exception
 {
 }

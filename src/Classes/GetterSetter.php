@@ -1,4 +1,5 @@
 <?php
+
 /**
  * GetterSetter.php
  *
@@ -7,84 +8,157 @@
  * @author     Muhammet ŞAFAK <info@muhammetsafak.com.tr>
  * @copyright  Copyright © 2022 Muhammet ŞAFAK
  * @license    ./LICENSE  MIT
- * @version    2.0
  * @link       https://www.muhammetsafak.com.tr
  */
 
+declare(strict_types=1);
+
 namespace InitPHP\Sessions\Classes;
 
+/**
+ * Thin, fluent wrapper around the `$_SESSION` superglobal.
+ *
+ * Every method is null-safe: if the session has not been started yet (so
+ * `$_SESSION` is not populated), reads return their defaults and writes
+ * initialise the array, instead of raising a type error.
+ */
 class GetterSetter
 {
-
+    /**
+     * Determines whether the given key exists in the session.
+     *
+     * @param string $key The session key.
+     * @return bool True when the key is set.
+     */
     public function has(string $key): bool
     {
-        return array_key_exists($key, $_SESSION);
+        return isset($_SESSION) && \array_key_exists($key, $_SESSION);
     }
 
-    public function set(string $key, $value): self
+    /**
+     * Stores a value under the given key.
+     *
+     * @param string $key   The session key.
+     * @param mixed  $value The value to store.
+     * @return $this
+     */
+    public function set(string $key, mixed $value): self
     {
         $_SESSION[$key] = $value;
+
         return $this;
     }
 
-    public function get(string $key, $default = null)
+    /**
+     * Returns the value stored under the given key.
+     *
+     * @param string $key     The session key.
+     * @param mixed  $default Returned when the key is absent.
+     * @return mixed The stored value, or $default.
+     */
+    public function get(string $key, mixed $default = null): mixed
     {
-        return array_key_exists($key, $_SESSION) ? $_SESSION[$key] : $default;
+        return $this->has($key) ? $_SESSION[$key] : $default;
     }
 
+    /**
+     * Removes one or more keys from the session.
+     *
+     * @param string ...$keys The session keys to remove.
+     * @return $this
+     */
     public function remove(string ...$keys): self
     {
         foreach ($keys as $key) {
-            if (isset($_SESSION[$key])) {
-                unset($_SESSION[$key]);
-            }
+            unset($_SESSION[$key]);
         }
 
         return $this;
     }
 
+    /**
+     * Alias of {@see remove()}.
+     *
+     * @param string ...$keys The session keys to remove.
+     * @return $this
+     */
     public function delete(string ...$keys): self
     {
         return $this->remove(...$keys);
     }
 
+    /**
+     * Returns the whole session payload.
+     *
+     * @return array<string, mixed>
+     */
     public function all(): array
     {
         return $_SESSION ?? [];
     }
 
-    public function push(string $key, $value)
+    /**
+     * Stores a value and returns the value itself (rather than `$this`).
+     *
+     * Handy when the caller wants to set and immediately use the value in a
+     * single expression.
+     *
+     * @param string $key   The session key.
+     * @param mixed  $value The value to store.
+     * @return mixed The stored value.
+     */
+    public function push(string $key, mixed $value): mixed
     {
         $_SESSION[$key] = $value;
 
         return $value;
     }
 
-    public function pull(string $key, $default = null)
+    /**
+     * Returns the value stored under the given key and removes it.
+     *
+     * @param string $key     The session key.
+     * @param mixed  $default Returned when the key is absent.
+     * @return mixed The stored value, or $default.
+     */
+    public function pull(string $key, mixed $default = null): mixed
     {
-        if (array_key_exists($key, $_SESSION)) {
-            $value = $_SESSION[$key];
-            unset($_SESSION[$key]);
+        if (!$this->has($key)) {
+            return $default;
         }
 
-        return $value ?? $default;
+        $value = $_SESSION[$key];
+        unset($_SESSION[$key]);
+
+        return $value;
     }
 
+    /**
+     * Merges (or replaces) the session with an associative array.
+     *
+     * Only string keys are considered; numeric keys are skipped.
+     *
+     * @param array<array-key, mixed> $assoc The values to store.
+     * @param bool                    $reset When true, the session is replaced
+     *                                        by $assoc instead of merged.
+     * @return $this
+     */
     public function setAssoc(array $assoc, bool $reset = false): self
     {
         $set = [];
         foreach ($assoc as $key => $value) {
-            if (!is_string($key)) {
+            if (!\is_string($key)) {
                 continue;
             }
             $set[$key] = $value;
         }
 
-        if (!empty($set)) {
-            $_SESSION = $reset ? $set : array_merge($_SESSION, $set);
+        if ($reset) {
+            $_SESSION = $set;
+        } elseif ($set !== []) {
+            $_SESSION = array_merge($_SESSION ?? [], $set);
         }
 
         return $this;
     }
-
 }
