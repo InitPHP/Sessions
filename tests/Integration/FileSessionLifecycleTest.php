@@ -24,7 +24,7 @@ final class FileSessionLifecycleTest extends TestCase
         $dir = sys_get_temp_dir() . '/initphp-sessions-it-' . uniqid('', true);
         mkdir($dir);
 
-        $options = ['use_cookies' => '0', 'use_only_cookies' => '0', 'cache_limiter' => ''];
+        $options = ['use_cookies' => '0', 'cache_limiter' => ''];
 
         Session::createImmutable(new FileAdapter(['path' => $dir]));
         self::assertTrue(Session::start($options));
