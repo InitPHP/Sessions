@@ -5,6 +5,7 @@ save handlers. Bring your own backend — files, an encrypted cookie, a SQL
 database (PDO), Redis, Memcache/Memcached, or MongoDB — behind one consistent
 interface.
 
+[![Designed & Maintained with Tan](https://www.muhammetsafak.com.tr/badges/designed-maintained-with-tan.svg)](https://www.muhammetsafak.com.tr/en/tan/)
 [![CI](https://github.com/InitPHP/Sessions/actions/workflows/ci.yml/badge.svg)](https://github.com/InitPHP/Sessions/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 
