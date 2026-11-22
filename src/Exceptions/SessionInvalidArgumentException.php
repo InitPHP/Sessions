@@ -21,6 +21,4 @@ use InvalidArgumentException;
  * Raised when an adapter or the manager receives invalid configuration or
  * arguments (missing required options, wrong types, ...).
  */
-class SessionInvalidArgumentException extends InvalidArgumentException
-{
-}
+class SessionInvalidArgumentException extends InvalidArgumentException {}

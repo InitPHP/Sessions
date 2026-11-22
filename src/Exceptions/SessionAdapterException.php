@@ -22,6 +22,4 @@ namespace InitPHP\Sessions\Exceptions;
  * Extends {@see SessionException} so a single catch block can handle every
  * package failure.
  */
-class SessionAdapterException extends SessionException
-{
-}
+class SessionAdapterException extends SessionException {}

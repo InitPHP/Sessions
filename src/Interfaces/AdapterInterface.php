@@ -25,6 +25,4 @@ use SessionHandlerInterface;
  * extra methods on top of the native contract; the interface exists only to
  * give the adapters a common, package-owned type to hint against.
  */
-interface AdapterInterface extends SessionHandlerInterface
-{
-}
+interface AdapterInterface extends SessionHandlerInterface {}
