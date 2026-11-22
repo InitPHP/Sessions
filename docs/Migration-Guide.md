@@ -17,7 +17,7 @@ notable points are below.
 ### Minimum PHP is now 8.1
 
 Update your environment/CI to PHP `^8.1`. There are no PHP-8.1-specific API
-changes you need to make in your own code. The current release raises the floor
+changes you need to make in your own code. Version 5.0.0 raises the floor
 further, to PHP `^8.2`.
 
 ### `createImmutable()` returns an instance
