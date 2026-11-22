@@ -285,7 +285,7 @@ In-depth, copy-pasteable docs live in [`docs/`](./docs/README.md).
 ```bash
 composer test     # PHPUnit
 composer phpstan  # Static analysis (level 8)
-composer cs-check # Coding style (PSR-12)
+composer cs-check # Coding style (PER-CS)
 composer qa       # All of the above
 ```
 
