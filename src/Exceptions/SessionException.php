@@ -23,6 +23,4 @@ use Exception;
  * Catching this type catches all package-level runtime failures, including
  * {@see SessionAdapterException}.
  */
-class SessionException extends Exception
-{
-}
+class SessionException extends Exception {}
