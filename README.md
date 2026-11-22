@@ -278,7 +278,7 @@ try {
 
 ## Documentation
 
-In-depth, copy-pasteable docs live in [`docs/`](./docs/README.md).
+In-depth, copy-pasteable docs live in [`docs/`](./docs/Home.md).
 
 ## Quality
 
