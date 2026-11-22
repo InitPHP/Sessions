@@ -1,16 +1,17 @@
 # Migration Guide
 
-This page covers two migrations:
+This page covers three migrations:
 
-1. [Upgrading to 3.x](#upgrading-to-3x) — from earlier `initphp/sessions` releases.
-2. [From `initphp/redis-session-handler`](#from-initphpredis-session-handler) —
+1. [Upgrading to 4.x](#upgrading-to-4x) — from earlier `initphp/sessions` releases.
+2. [Upgrading to 5.0](#upgrading-to-50) — from 4.x.
+3. [From `initphp/redis-session-handler`](#from-initphpredis-session-handler) —
    the deprecated standalone package.
 
 ---
 
-## Upgrading to 3.x
+## Upgrading to 4.x
 
-The 3.x line modernises the package (PHP 8.1+, typed throughout, tested, and with
+The 4.x line modernises the package (PHP 8.1+, typed throughout, tested, and with
 the adapter examples actually working). Most code keeps running unchanged; the
 notable points are below.
 
@@ -18,7 +19,7 @@ notable points are below.
 
 Update your environment/CI to PHP `^8.1`. There are no PHP-8.1-specific API
 changes you need to make in your own code. Version 5.0.0 raises the floor
-further, to PHP `^8.2`.
+further; see [Upgrading to 5.0](#upgrading-to-50).
 
 ### `createImmutable()` returns an instance
 
@@ -43,7 +44,7 @@ Connection details are now top-level options (matching the documentation). To
 reuse an existing client, pass it under `redis`.
 
 ```php
-// 3.x
+// 4.x
 new RedisAdapter([
     'host'     => '127.0.0.1',
     'port'     => 6379,
@@ -118,6 +119,19 @@ Configuration and missing-dependency errors remain
 `gc()` now returns the **number of deleted sessions** (the base default returns
 `0`), instead of echoing back `max_lifetime`. File/PDO/MongoDB perform real
 cleanup; Redis/Memcached rely on their TTLs.
+
+---
+
+## Upgrading to 5.0
+
+| | 4.x | 5.0 |
+| --- | --- | --- |
+| PHP | `^8.1` | `^8.2` |
+| Code style | PSR-12 | PER-CS (contributors only) |
+
+5.0.0 raises the PHP floor to `^8.2` and moves the code style to PER-CS. The
+public API and behaviour are unchanged: run on PHP 8.2 or later and bump the
+constraint to `^5.0`.
 
 ---
 
