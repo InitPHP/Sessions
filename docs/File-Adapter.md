@@ -1,0 +1,67 @@
+# File Adapter
+
+`InitPHP\Sessions\Adapters\FileAdapter` stores each session as a file in a
+directory you choose — without touching the global `session.save_path` ini
+setting.
+
+**Requirements:** none.
+
+## Options
+
+| Option | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `path` | string | — | **Required.** An existing, writable directory. |
+| `prefix` | string | `sess_` | Prefix for each session file name. |
+
+If `path` is missing, or is not a writable directory, the constructor throws a
+[`SessionInvalidArgumentException`](Exceptions.md).
+
+## Usage
+
+```php
+use InitPHP\Sessions\Session;
+use InitPHP\Sessions\Adapters\FileAdapter;
+
+$adapter = new FileAdapter([
+    'path'   => '/var/www/storage/sessions',
+    'prefix' => 'sess_',
+]);
+
+Session::createImmutable($adapter)->start();
+```
+
+A session with id `abc123` is stored at `/var/www/storage/sessions/sess_abc123`.
+
+## Garbage collection
+
+`gc()` runs on PHP's normal session GC schedule (governed by
+`session.gc_probability` / `session.gc_divisor` / `session.gc_maxlifetime`). It
+deletes every file in `path` whose **modification time** is older than
+`gc_maxlifetime`, and returns the number of files removed.
+
+You can also trigger it manually:
+
+```php
+$deleted = $adapter->gc(3600); // delete sessions idle for > 1 hour
+```
+
+## Behaviour notes
+
+- `read()` returns the file's contents, or `''` if the file does not exist (a
+  brand-new session).
+- `write()` overwrites the file atomically via `file_put_contents()`.
+- `destroy()` deletes the file if present and always reports success (destroying a
+  non-existent session is not an error).
+
+## When to use it
+
+- You want a non-default save path or file prefix without editing `php.ini`.
+- Single-server deployments, or shared storage (NFS/EFS) across a small fleet.
+
+For multi-server setups where shared storage is awkward, prefer
+[Redis](Redis-Adapter.md) or [PDO](PDO-Adapter.md).
+
+## See also
+
+- [Adapters overview](Adapters.md)
+- [Custom Adapters](Custom-Adapters.md)
