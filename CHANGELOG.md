@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed (breaking)
 
+- The development dependency `initphp/encryption` moved to `^3.0` (was `^2.0`);
+  it is only used by the test suite (applications that use the `CookieAdapter`
+  install `initphp/encryption` themselves).
 - Requires PHP `^8.2` (was `^8.1`); PHP 8.1 is no longer supported. CI now
   covers PHP 8.2, 8.3, 8.4 and 8.5.
 - Code style moved to PER-CS (php-cs-fixer, shared `.php-cs-fixer.dist.php`,
