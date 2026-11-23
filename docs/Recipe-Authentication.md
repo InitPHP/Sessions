@@ -22,7 +22,10 @@ Session::createImmutable(new RedisAdapter([
 ]))->start([
     'cookie_httponly' => true,
     'cookie_samesite' => 'Lax',
-    'cookie_secure'   => !empty($_SERVER['HTTPS']),
+    // Always Secure. Do not derive this from $_SERVER['HTTPS']: behind a proxy or
+    // load balancer that terminates TLS it is empty, and the flag would silently
+    // be dropped. Switch it off only for local development, through your config.
+    'cookie_secure'   => true,
 ]);
 ```
 
@@ -117,7 +120,7 @@ Use with care behind proxies and for mobile clients (see the adapter's warning).
 
 - ✅ `regenerateId(true)` immediately after a successful login.
 - ✅ Store an id, reload the user each request.
-- ✅ `cookie_httponly`, `cookie_secure` (on HTTPS), and a sensible `cookie_samesite`.
+- ✅ `cookie_httponly`, `cookie_secure` (always on; off only for local development), and a sensible `cookie_samesite`.
 - ✅ `flush()` + `regenerateId(true)` + `destroy()` on logout.
 
 ## See also

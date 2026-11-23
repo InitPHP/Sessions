@@ -15,6 +15,7 @@ session. `$options` are forwarded verbatim to
 Session::createImmutable($adapter)
     ->start([
         'cookie_lifetime' => 3600,
+        'cookie_httponly' => true, // PHP's default is off
         'cookie_secure'   => true,
         'cookie_samesite' => 'Lax',
     ]);
@@ -52,11 +53,19 @@ Read or set the session id. `setID()` returns whether the id was accepted, and
 must be called before `start()`:
 
 ```php
-Session::setID($idFromSomewhere);
+// Only ever with an id your own code generated.
+Session::setID(session_create_id());
 Session::start();
 
 echo Session::getID();
 ```
+
+> **Never pass an id taken from the request** (a query parameter, a form field, a
+> header) to `setID()`. That is session fixation: an attacker who can make a
+> victim adopt a known id then shares their session once they log in. Normally
+> you do not need `setID()` at all, because PHP reads the id from the session
+> cookie on its own; keep `session.use_strict_mode` on so PHP refuses ids it did
+> not issue.
 
 `getID()` returns an empty string when there is no id yet.
 
@@ -115,7 +124,7 @@ Session::destroy();
 | `start` | `bool` | — | Begin the session |
 | `isStarted` | `bool` | — | Guard before starting |
 | `getName` / `setName` | `string` / `Manager` | before start | Custom cookie name |
-| `getID` / `setID` | `string` / `bool` | before start | Adopt an existing id |
+| `getID` / `setID` | `string` / `bool` | before start | Set an id your own code generated (never one from the request) |
 | `regenerateId` | `bool` | ✅ | After login / privilege change |
 | `flush` / `unset` | `bool` | ✅ (throws otherwise) | Clear data, keep session |
 | `destroy` | `bool` | ✅ | Logout / teardown |
