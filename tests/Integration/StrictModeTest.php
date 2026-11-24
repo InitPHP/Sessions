@@ -550,4 +550,26 @@ final class StrictModeTest extends TestCase
         self::assertSame($regenerated, $reopened);
         self::assertSame('admin', $seen);
     }
+
+    public function testSessionIdsComeFromTheAdaptersCreateSid(): void
+    {
+        $adapter = new class (['path' => $this->dir]) extends FileAdapter {
+            public function create_sid(): string
+            {
+                return 'custom-' . parent::create_sid();
+            }
+        };
+
+        $regenerated = '';
+        $id = $this->request($adapter, null, static function () use (&$regenerated): void {
+            Session::set('user', 'admin');
+            Session::regenerateId(true);
+            $regenerated = Session::getID();
+        });
+
+        // The id of a new session and the one after regenerateId() are both
+        // created by the adapter; PHP's collision check goes through validateId().
+        self::assertStringStartsWith('custom-', $id);
+        self::assertMatchesRegularExpression('/^custom-[0-9a-f]{32}$/', $regenerated);
+    }
 }

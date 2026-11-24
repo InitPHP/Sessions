@@ -29,14 +29,20 @@ before: a custom adapter that extends it keeps working unchanged, but PHP then
 accepts any session id a client sends, even with `session.use_strict_mode` on, and
 calls `write()` on every request even with `session.lazy_write` on.
 
-To opt in, implement PHP's `SessionUpdateTimestampHandlerInterface` yourself:
+To opt in, implement PHP's `SessionUpdateTimestampHandlerInterface` yourself (and
+`SessionIdInterface`, see below):
 
 ```php
 use InitPHP\Sessions\AbstractAdapter;
 
-final class ArrayAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
+final class ArrayAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
     // read(), write(), destroy() as below ...
+
+    public function create_sid(): string
+    {
+        return bin2hex(random_bytes(16)); // 32 hex characters, like PHP's default
+    }
 
     public function validateId(string $id): bool
     {
@@ -50,6 +56,14 @@ final class ArrayAdapter extends AbstractAdapter implements SessionUpdateTimesta
 }
 ```
 
+- **`create_sid()`** creates the id for a new session and for `regenerateId()`.
+  PHP 8.6 warns (and PHP 9.0 will refuse) when a session handler does not provide
+  it. Return a random id of the shape PHP produces (`session.sid_length`
+  characters, 32 hexadecimal characters by default); PHP collision-checks it with
+  `validateId()` and adds any `session_create_id()` prefix itself. Every adapter
+  that extends the unchanged `AbstractAdapter` gets PHP 8.6's warning once for
+  `AbstractAdapter` itself; implementing the interfaces above removes the warning
+  for your own class.
 - **`validateId($id)`** is called by PHP with the id the client sent when
   `session.use_strict_mode` is on, and when PHP checks an id it has just generated
   (`session_create_id()`, `session_regenerate_id()`) for a collision. Return `true`
@@ -78,7 +92,7 @@ Adapters that extend one of the *bundled* adapters inherit these methods; see
 ## Extending a bundled adapter
 
 The bundled adapters implement `SessionUpdateTimestampHandlerInterface` with
-public `validateId()` and `updateTimestamp()` methods, and with
+public `validateId()`, `updateTimestamp()` and `create_sid()` methods, and with
 `session.lazy_write` on PHP no longer calls `write()` for unchanged data. If your
 subclass overrides `read()`/`write()`/`destroy()` (for example to prefix or
 encrypt ids or payloads), override **both** new methods as well, or active

@@ -17,7 +17,9 @@ namespace InitPHP\Sessions\Adapters;
 
 use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
+use InitPHP\Sessions\Internal\GeneratesSessionIds;
 use InitPHP\Sessions\Internal\ResolvesSessionLifetime;
+use SessionIdInterface;
 use SessionUpdateTimestampHandlerInterface;
 
 use function clearstatcache;
@@ -53,8 +55,9 @@ use function unlink;
  * while it is younger than `session.gc_maxlifetime`; the file's modification
  * time is renewed by {@see updateTimestamp()}, which never creates a file.
  */
-class FileAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
+class FileAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
+    use GeneratesSessionIds;
     use ResolvesSessionLifetime;
 
     private string $path;

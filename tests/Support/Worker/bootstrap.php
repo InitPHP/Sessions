@@ -11,6 +11,20 @@
 
 declare(strict_types=1);
 
+/*
+ * Any warning, notice or deprecation raised while a scenario runs is an error
+ * (the PHPUnit settings that do this do not reach this process). The one
+ * exception: PHP 8.6 warns that AbstractAdapter, which this package must keep
+ * unchanged, lacks create_sid() and validateId(); no other file may warn.
+ */
+set_error_handler(static function (int $severity, string $message, string $file, int $line): bool {
+    if (str_ends_with($file, 'src' . DIRECTORY_SEPARATOR . 'AbstractAdapter.php') && str_contains($message, 'will be required in PHP 9.0')) {
+        return true;
+    }
+
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
 require \dirname(__DIR__, 3) . '/vendor/autoload.php';
 
 /**

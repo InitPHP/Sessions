@@ -18,6 +18,8 @@ namespace InitPHP\Sessions\Adapters;
 use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
 use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
+use InitPHP\Sessions\Internal\GeneratesSessionIds;
+use SessionIdInterface;
 use SessionUpdateTimestampHandlerInterface;
 
 use function base64_decode;
@@ -47,7 +49,8 @@ use function time;
  * The session id is not a lookup key here (the data travels with the
  * request), so strict mode is answered from the request: {@see validateId()}
  * accepts an id only when it is the session id the client sent in its session
- * cookie *and* the request carries a payload cookie that decrypts with the
+ * cookie (or the one this session was last read or written under, so that
+ * re-opening a session within a request keeps its id) *and* the request carries a payload cookie that decrypts with the
  * configured key. A first visit, a missing, tampered or foreign-key payload
  * cookie, or an id the client chose without the matching payload therefore gets
  * a fresh id. Ids PHP generates itself (`session_create_id()`,
@@ -59,8 +62,10 @@ use function time;
  *
  * @requires initphp/encryption
  */
-class CookieAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
+class CookieAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
+    use GeneratesSessionIds;
+
     private string $name;
 
     private int $ttl;

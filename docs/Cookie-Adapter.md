@@ -61,7 +61,9 @@ Session::createImmutable($adapter)->start();
 
 The session data travels in the payload cookie, not on the server, so the session
 id is not a lookup key here. With `session.use_strict_mode` on, an id counts as
-known only when it is the id the client sent in its session cookie **and** the
+known only when it is the id the client sent in its session cookie (or the id
+this session was last read or written under, so closing and re-opening a session
+in one request keeps its id) **and** the
 same request carries a payload cookie that decrypts with your `key`. A first
 visit, a missing, tampered or foreign-key payload cookie, or an id sent without
 its payload therefore gets a fresh id. Ids PHP generates itself

@@ -4,16 +4,23 @@ declare(strict_types=1);
 
 namespace InitPHP\Sessions\Tests\Support;
 
+use SessionIdInterface;
 use SessionUpdateTimestampHandlerInterface;
 
 /**
  * The recipe from docs/Custom-Adapters.md: a custom adapter that opts in to
- * strict mode and lazy write by implementing the interface itself.
+ * strict mode, lazy write and PHP 8.6's create_sid() by implementing the
+ * interfaces itself.
  */
-final class StrictArrayAdapter extends \InitPHP\Sessions\AbstractAdapter implements SessionUpdateTimestampHandlerInterface
+final class StrictArrayAdapter extends \InitPHP\Sessions\AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
     /** @var array<string, string> */
     public array $store = [];
+
+    public function create_sid(): string
+    {
+        return bin2hex(random_bytes(16));
+    }
 
     public function validateId(string $id): bool
     {

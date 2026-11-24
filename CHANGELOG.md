@@ -23,12 +23,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A store failure is not treated as "no such session": the id is not rejected, so
   a database or cache outage does not replace users' session ids. `MemCacheAdapter`
   (Memcached) now reports a server error from `read()` as a failure (`false`)
-  instead of an empty session; only "not found" is an empty session.
+  instead of an empty session; only "not found" (or a key Memcached refuses to
+  send, such as an id longer than 250 bytes) is an empty session.
 - `CookieAdapter` accepts an id only when it is the session id the request
-  presented and the request carries a payload cookie that decrypts; ids PHP
+  presented (or the one the session was last read or written under, so closing
+  and re-opening a session in one request keeps its id) and the request carries a payload cookie that decrypts; ids PHP
   generates (`session_create_id()`, `regenerateId()`) are never reported as taken.
   `updateTimestamp()` does not create a payload cookie when the request carried none. The payload carries
   no timestamp, so its lifetime remains enforced by the browser only.
+- The bundled adapters implement PHP's `SessionIdInterface` (`create_sid()`),
+  which PHP 8.6 asks every session handler to provide and PHP 9.0 will require.
+  The id has the shape PHP's own generator produces (`session.sid_length`
+  characters of `session.sid_bits_per_character` bits, 32 hexadecimal characters
+  by default); PHP still collision-checks it through `validateId()` and applies
+  any `session_create_id()` prefix. This removes the PHP 8.6 deprecation
+  warnings of the six adapters. Behaviour on PHP 8.2 to 8.5 is unchanged. Because
+  `AbstractAdapter` is unchanged, PHP 8.6 still warns once that `AbstractAdapter`
+  itself, and any custom adapter that extends it, lacks `create_sid()` and
+  `validateId()`; a custom adapter silences it by implementing the interfaces (see
+  `docs/Custom-Adapters.md`).
 - `docs/Custom-Adapters.md` explains how a custom adapter opts in by implementing
   the interface itself, including the locking and "never create" rules.
 
@@ -58,7 +71,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ids) must override both new methods too, otherwise active sessions are no longer
   renewed. A subclass that already declares a method named `validateId` or
   `updateTimestamp` with a different signature or a non-public visibility fails
-  with a fatal error and must align it.
+  with a fatal error and must align it. The same applies to `create_sid()`, which
+  the adapters now declare as a public method.
 
 ## [5.0.0] - 2026-11-22
 

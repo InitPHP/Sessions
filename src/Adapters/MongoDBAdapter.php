@@ -19,10 +19,12 @@ use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionAdapterException;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
 use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
+use InitPHP\Sessions\Internal\GeneratesSessionIds;
 use InitPHP\Sessions\Internal\ResolvesSessionLifetime;
 use MongoDB\Driver\BulkWrite;
 use MongoDB\Driver\Manager;
 use MongoDB\Driver\Query;
+use SessionIdInterface;
 use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
@@ -47,8 +49,9 @@ use function time;
  * {@see updateTimestamp()} renews that timestamp and never creates a document.
  * A driver error is not taken as proof that the session does not exist.
  */
-class MongoDBAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
+class MongoDBAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
+    use GeneratesSessionIds;
     use ResolvesSessionLifetime;
 
     private Manager $manager;

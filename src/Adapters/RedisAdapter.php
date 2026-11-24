@@ -18,7 +18,9 @@ namespace InitPHP\Sessions\Adapters;
 use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionAdapterException;
 use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
+use InitPHP\Sessions\Internal\GeneratesSessionIds;
 use Redis;
+use SessionIdInterface;
 use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
@@ -44,8 +46,10 @@ use Throwable;
  * never creates a key. A Redis error is not taken as proof that the session
  * does not exist.
  */
-class RedisAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
+class RedisAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
+    use GeneratesSessionIds;
+
     private Redis $redis;
 
     private int $database;

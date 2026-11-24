@@ -18,8 +18,10 @@ namespace InitPHP\Sessions\Adapters;
 use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionAdapterException;
 use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
+use InitPHP\Sessions\Internal\GeneratesSessionIds;
 use Memcache;
 use Memcached;
+use SessionIdInterface;
 use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
@@ -51,8 +53,10 @@ use const CASE_LOWER;
  * legacy Memcache driver cannot tell the two apart; there a failed `get()` is
  * treated as "not found".)
  */
-class MemCacheAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
+class MemCacheAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
+    use GeneratesSessionIds;
+
     protected const DRIVER_MEMCACHE = 1;
     protected const DRIVER_MEMCACHED = 2;
 

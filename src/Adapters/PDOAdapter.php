@@ -18,10 +18,12 @@ namespace InitPHP\Sessions\Adapters;
 use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionAdapterException;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
+use InitPHP\Sessions\Internal\GeneratesSessionIds;
 use InitPHP\Sessions\Internal\ResolvesSessionLifetime;
 use PDO;
 use PDOException;
 use PDOStatement;
+use SessionIdInterface;
 use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
@@ -62,8 +64,9 @@ use function time;
  *      PRIMARY KEY (`id`)
  *  );
  */
-class PDOAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
+class PDOAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
+    use GeneratesSessionIds;
     use ResolvesSessionLifetime;
 
     private PDO $pdo;
