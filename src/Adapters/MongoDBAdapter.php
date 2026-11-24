@@ -19,9 +19,11 @@ use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionAdapterException;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
 use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
+use InitPHP\Sessions\Internal\ResolvesSessionLifetime;
 use MongoDB\Driver\BulkWrite;
 use MongoDB\Driver\Manager;
 use MongoDB\Driver\Query;
+use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
 use function class_exists;
@@ -41,10 +43,13 @@ use function time;
  *
  * With `session.use_strict_mode` on, a document counts as an existing session
  * only while its `timestamp` is younger than `session.gc_maxlifetime`;
- * {@see updateTimestamp()} renews that timestamp.
+ * {@see updateTimestamp()} renews that timestamp and never creates a document.
+ * A driver error is not taken as proof that the session does not exist.
  */
-class MongoDBAdapter extends AbstractAdapter
+class MongoDBAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
 {
+    use ResolvesSessionLifetime;
+
     private Manager $manager;
 
     private string $collection;
@@ -88,29 +93,24 @@ class MongoDBAdapter extends AbstractAdapter
         try {
             $query = new Query([
                 '_id'       => $id,
-                'timestamp' => ['$gte' => time() - $this->sessionLifetime()],
+                'timestamp' => ['$gte' => time() - $this->resolveSessionLifetime()],
             ]);
 
             return $this->manager->executeQuery($this->collection, $query)->toArray() !== [];
         } catch (Throwable) {
-            return false;
+            // The store failed: do not reject the id (see PDOAdapter).
+            return true;
         }
     }
 
     public function updateTimestamp(string $id, string $data): bool
     {
         try {
+            // No upsert: a document that is gone must stay gone.
             $bulkWrite = new BulkWrite();
             $bulkWrite->update(['_id' => $id], ['$set' => ['timestamp' => time()]]);
 
-            $result = $this->manager->executeBulkWrite($this->collection, $bulkWrite);
-            if (!$result->isAcknowledged()) {
-                return false;
-            }
-
-            // The document vanished between read and close: store the data
-            // again rather than silently losing the session.
-            return ($result->getMatchedCount() ?? 0) > 0 || $this->write($id, $data);
+            return $this->manager->executeBulkWrite($this->collection, $bulkWrite)->isAcknowledged();
         } catch (Throwable) {
             return false;
         }

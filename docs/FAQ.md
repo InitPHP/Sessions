@@ -107,9 +107,10 @@ Yes — extend `AbstractAdapter` and implement `read`/`write`/`destroy`. See
 
 ## Does `session.use_strict_mode` work with the adapters?
 
-Yes. The adapters tell PHP whether an id belongs to a stored session, so an id the
+Yes, for the bundled adapters. They tell PHP whether an id belongs to a stored session, so an id the
 server never issued (or whose session expired) is replaced with a fresh one. See
-[Strict mode and lazy write](Session-Lifecycle.md#strict-mode-and-lazy-write).
+[Strict mode and lazy write](Session-Lifecycle.md#strict-mode-and-lazy-write). A custom adapter opts in by implementing PHP's `SessionUpdateTimestampHandlerInterface`; see
+[Custom Adapters](Custom-Adapters.md#strict-mode-and-lazy-write).
 
 ## Where do I report bugs or ask questions?
 

@@ -18,9 +18,11 @@ namespace InitPHP\Sessions\Adapters;
 use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionAdapterException;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
+use InitPHP\Sessions\Internal\ResolvesSessionLifetime;
 use PDO;
 use PDOException;
 use PDOStatement;
+use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
 use function date;
@@ -47,7 +49,8 @@ use function time;
  *
  * With `session.use_strict_mode` on, a row counts as an existing session only
  * while its `sess_timestamp` is younger than `session.gc_maxlifetime`;
- * {@see updateTimestamp()} renews that timestamp.
+ * {@see updateTimestamp()} renews that timestamp and never inserts a row. A
+ * database error is not taken as proof that the session does not exist.
  *
  * Expected table layout:
  *
@@ -59,8 +62,10 @@ use function time;
  *      PRIMARY KEY (`id`)
  *  );
  */
-class PDOAdapter extends AbstractAdapter
+class PDOAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
 {
+    use ResolvesSessionLifetime;
+
     private PDO $pdo;
 
     private string $table;
@@ -106,7 +111,7 @@ class PDOAdapter extends AbstractAdapter
         try {
             $arguments = [
                 ':sess_id'   => $id,
-                ':threshold' => date('Y-m-d H:i:s', time() - $this->sessionLifetime()),
+                ':threshold' => date('Y-m-d H:i:s', time() - $this->resolveSessionLifetime()),
             ];
             $sql = 'SELECT 1 FROM ' . $this->table . ' WHERE id = :sess_id AND sess_timestamp >= :threshold';
             if ($this->withIPAddress) {
@@ -116,10 +121,16 @@ class PDOAdapter extends AbstractAdapter
             $sql .= ' LIMIT 1';
 
             $stmt = $this->query($sql, $arguments);
+            if ($stmt === false) {
+                // The store failed: do not reject the id (that would replace
+                // the user's session cookie over a transient outage). read()
+                // will fail the same way and the session simply does not start.
+                return true;
+            }
 
-            return $stmt !== false && $stmt->fetchColumn() !== false;
+            return $stmt->fetchColumn() !== false;
         } catch (Throwable) {
-            return false;
+            return true;
         }
     }
 

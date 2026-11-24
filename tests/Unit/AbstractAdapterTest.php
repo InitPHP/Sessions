@@ -5,70 +5,66 @@ declare(strict_types=1);
 namespace InitPHP\Sessions\Tests\Unit;
 
 use InitPHP\Sessions\AbstractAdapter;
+use InitPHP\Sessions\Adapters\CookieAdapter;
+use InitPHP\Sessions\Adapters\FileAdapter;
+use InitPHP\Sessions\Adapters\MemCacheAdapter;
+use InitPHP\Sessions\Adapters\MongoDBAdapter;
+use InitPHP\Sessions\Adapters\PDOAdapter;
+use InitPHP\Sessions\Adapters\RedisAdapter;
 use InitPHP\Sessions\Interfaces\AdapterInterface;
 use InitPHP\Sessions\Tests\Support\ArrayAdapter;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 use SessionUpdateTimestampHandlerInterface;
 
+/**
+ * `AbstractAdapter` itself is unchanged: strict mode is opt-in per adapter, so
+ * a third-party subclass keeps exactly the methods and behaviour it had.
+ */
 final class AbstractAdapterTest extends TestCase
 {
-    private function legacyAdapter(): ArrayAdapter
+    public function testTheBaseClassDoesNotImplementTheUpdateTimestampInterface(): void
     {
-        return new ArrayAdapter();
-    }
+        $adapter = new ArrayAdapter();
 
-    public function testAdaptersAreUpdateTimestampHandlersAndStillAdapters(): void
-    {
-        $adapter = $this->legacyAdapter();
-
-        self::assertInstanceOf(SessionUpdateTimestampHandlerInterface::class, $adapter);
         self::assertInstanceOf(AdapterInterface::class, $adapter);
+        self::assertNotInstanceOf(SessionUpdateTimestampHandlerInterface::class, $adapter);
+        self::assertFalse(method_exists(AbstractAdapter::class, 'validateId'));
+        self::assertFalse(method_exists(AbstractAdapter::class, 'updateTimestamp'));
     }
 
-    public function testDefaultValidateIdRejectsIdsWithoutStoredData(): void
+    public function testTheBaseClassAddsNoMethodsBeyondTheSessionHandlerContract(): void
     {
-        $adapter = $this->legacyAdapter();
+        $own = array_map(
+            static fn(\ReflectionMethod $method): string => $method->getName(),
+            (new ReflectionClass(AbstractAdapter::class))->getMethods(),
+        );
+        sort($own);
 
-        self::assertFalse($adapter->validateId('unknown'));
+        self::assertSame(['close', 'destroy', 'gc', 'open', 'read', 'write'], $own);
     }
 
-    public function testDefaultValidateIdAcceptsIdsWithStoredData(): void
+    /**
+     * @return iterable<string, array{class-string}>
+     */
+    public static function bundledAdapters(): iterable
     {
-        $adapter = $this->legacyAdapter();
-        $adapter->write('known', 'a|i:1;');
-
-        self::assertTrue($adapter->validateId('known'));
+        yield 'file' => [FileAdapter::class];
+        yield 'pdo' => [PDOAdapter::class];
+        yield 'redis' => [RedisAdapter::class];
+        yield 'memcache' => [MemCacheAdapter::class];
+        yield 'mongodb' => [MongoDBAdapter::class];
+        yield 'cookie' => [CookieAdapter::class];
     }
 
-    public function testDefaultValidateIdRejectsIdsWhoseReadFails(): void
+    /**
+     * @param class-string $class
+     */
+    #[DataProvider('bundledAdapters')]
+    public function testEveryBundledAdapterImplementsTheInterface(string $class): void
     {
-        $adapter = new class extends AbstractAdapter {
-            public function read(string $id): string|false
-            {
-                return false;
-            }
-
-            public function write(string $id, string $data): bool
-            {
-                return true;
-            }
-
-            public function destroy(string $id): bool
-            {
-                return true;
-            }
-        };
-
-        self::assertFalse($adapter->validateId('sid'));
-    }
-
-    public function testDefaultUpdateTimestampWritesTheDataAgain(): void
-    {
-        $adapter = $this->legacyAdapter();
-
-        self::assertTrue($adapter->updateTimestamp('sid', 'a|i:1;'));
-
-        self::assertSame(1, $adapter->writes);
-        self::assertSame('a|i:1;', $adapter->read('sid'));
+        self::assertTrue(is_subclass_of($class, SessionUpdateTimestampHandlerInterface::class));
+        self::assertTrue(is_subclass_of($class, AbstractAdapter::class));
     }
 }

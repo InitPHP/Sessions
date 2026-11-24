@@ -19,6 +19,7 @@ use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionAdapterException;
 use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
 use Redis;
+use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
 /**
@@ -39,9 +40,11 @@ use Throwable;
  *  - `prefix`   (string)  Key prefix. Defaults to none.
  *
  * Redis drops expired keys itself, so a key that exists is a live session
- * ({@see validateId()}); {@see updateTimestamp()} renews the key's expiry.
+ * ({@see validateId()}); {@see updateTimestamp()} renews the key's expiry and
+ * never creates a key. A Redis error is not taken as proof that the session
+ * does not exist.
  */
-class RedisAdapter extends AbstractAdapter
+class RedisAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
 {
     private Redis $redis;
 
@@ -102,30 +105,30 @@ class RedisAdapter extends AbstractAdapter
     {
         try {
             $exists = $this->redis->exists($this->prefix . $id);
-
-            return $exists === true || (\is_int($exists) && $exists > 0);
         } catch (Throwable) {
-            return false;
+            // The store failed: do not reject the id (see PDOAdapter).
+            return true;
         }
+
+        if ($exists === false) {
+            // phpredis reports a failed command as false.
+            return true;
+        }
+
+        return $exists === true || (\is_int($exists) && $exists > 0);
     }
 
     public function updateTimestamp(string $id, string $data): bool
     {
         try {
-            $key = $this->prefix . $id;
-
+            // EXPIRE only touches an existing key: a session that is gone
+            // (destroyed or regenerated meanwhile) must stay gone. With
+            // `ttl => 0` there is no expiry to renew.
             if ($this->ttl > 0) {
-                if ($this->redis->expire($key, $this->ttl) === true) {
-                    return true;
-                }
-            } elseif ($this->validateId($id)) {
-                // No expiry configured: nothing to renew while the key lives.
-                return true;
+                $this->redis->expire($this->prefix . $id, $this->ttl);
             }
 
-            // The key vanished between read and close: store the data again
-            // rather than silently losing the session.
-            return $this->write($id, $data);
+            return true;
         } catch (Throwable) {
             return false;
         }

@@ -176,6 +176,27 @@ final class PDOAdapterTest extends TestCase
         self::assertSame('data', $adapter->read('sid'));
     }
 
+    public function testAStoreFailureDoesNotRejectTheIdAndReadFailsTheSameWay(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('sid', 'data');
+        $this->pdo->exec('DROP TABLE sessions');
+
+        // Not "no such session": the user's id must survive a database outage.
+        self::assertTrue($adapter->validateId('sid'));
+        self::assertFalse($adapter->read('sid'));
+    }
+
+    public function testASilentStoreFailureDoesNotRejectTheIdEither(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('sid', 'data');
+        $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_SILENT);
+        $this->pdo->exec('DROP TABLE sessions');
+
+        self::assertTrue($adapter->validateId('sid'));
+    }
+
     public function testUpdateTimestampNeverCreatesARow(): void
     {
         $this->adapter()->updateTimestamp('ghost', 'data');

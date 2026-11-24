@@ -11,8 +11,6 @@ defaults for the parts most stores don't need to customise.
 | `open(string $path, string $name): bool` | returns `true` | You open a connection per request. |
 | `close(): bool` | returns `true` | You close a connection. |
 | `gc(int $max_lifetime): int\|false` | returns `0` (deletes nothing) | Your store has no built-in expiry. |
-| `validateId(string $id): bool` | `true` when `read($id)` returns a non-empty payload | Your store can check existence without reading the payload. |
-| `updateTimestamp(string $id, string $data): bool` | calls `write($id, $data)` | Your store can renew the lifetime without rewriting the payload. |
 | `read(string $id): string\|false` | **abstract** | Always. |
 | `write(string $id, string $data): bool` | **abstract** | Always. |
 | `destroy(string $id): bool` | **abstract** | Always. |
@@ -26,28 +24,67 @@ corrupts the session.
 
 ## Strict mode and lazy write
 
-`AbstractAdapter` also implements PHP's `SessionUpdateTimestampHandlerInterface`,
-so an adapter that only implements `read()`, `write()` and `destroy()` already
-works with `session.use_strict_mode` and `session.lazy_write`:
+`AbstractAdapter` implements only PHP's `SessionHandlerInterface`, exactly as
+before: a custom adapter that extends it keeps working unchanged, but PHP then
+accepts any session id a client sends, even with `session.use_strict_mode` on, and
+calls `write()` on every request even with `session.lazy_write` on.
 
-- With strict mode on, PHP calls `validateId($id)` at session start with the id
-  the client sent and replaces the id with a fresh one when it returns `false`.
-  The default treats an id as valid when `read($id)` returns a non-empty payload,
-  so an unknown or expired id is rejected. A session that holds no data yet
-  reads as empty and is therefore also replaced; that is harmless (the new id
-  carries the same empty data) and it keeps client-chosen ids out of your store.
-  Override `validateId()` with a cheaper existence check (`EXISTS`, `SELECT 1`)
-  when you can, and make sure an **expired** record counts as missing.
-- With lazy write on (the default), PHP calls `updateTimestamp($id, $data)`
-  instead of `write()` when the data did not change. The default calls
-  `write()` again, which renews whatever expiry your store tracks. Override it
-  with a touch/expire call if rewriting the payload is costly. If your store
-  expires sessions by age, an implementation that does nothing here would let
-  active sessions expire.
+To opt in, implement PHP's `SessionUpdateTimestampHandlerInterface` yourself:
 
-If your adapter turns the session id into a file name, a key with structure, or
-a query, treat the id as untrusted input: `setID()` and a custom cookie can hand
-you anything, and PHP does not restrict what `session_id()` accepts.
+```php
+use InitPHP\Sessions\AbstractAdapter;
+
+final class ArrayAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
+{
+    // read(), write(), destroy() as below ...
+
+    public function validateId(string $id): bool
+    {
+        return isset($this->store[$id]); // an expired record must count as missing
+    }
+
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        return true; // renew the lifetime here; see the rules below
+    }
+}
+```
+
+- **`validateId($id)`** is called by PHP with the id the client sent when
+  `session.use_strict_mode` is on, and when PHP checks an id it has just generated
+  (`session_create_id()`, `session_regenerate_id()`) for a collision. Return `true`
+  only when a live session with exactly that id is stored. Treat an **expired**
+  record as missing. If the store itself fails (connection lost), do not return
+  `false`: that would replace the user's id over a transient outage; return `true`
+  and let `read()` fail.
+- **`updateTimestamp($id, $data)`** is called instead of `write()` when
+  `session.lazy_write` is on (the default) and the data did not change. Renew the
+  lifetime your store tracks, **never create the record**: if the session is gone
+  (a parallel request logged out or regenerated the id) it must stay gone, so
+  return `true` without writing. Do not simply call `write()` here.
+- **Locking.** PHP calls `validateId()` and then `read()` for the same id without
+  `close()` in between. If your `read()` takes a lock that it releases only in
+  `close()`/`write()`, `validateId()` must not call `read()` and must not take the
+  lock again, or the request will block on its own lock. Use a lock-free
+  existence check.
+- **The id is untrusted input** (`setID()`, a custom cookie and a hostile client
+  can all supply anything, and PHP does not restrict what `session_id()` accepts).
+  Validate it before using it as a file name, a key with structure or part of a
+  query.
+
+Adapters that extend one of the *bundled* adapters inherit these methods; see
+[Extending a bundled adapter](#extending-a-bundled-adapter).
+
+## Extending a bundled adapter
+
+The bundled adapters implement `SessionUpdateTimestampHandlerInterface` with
+public `validateId()` and `updateTimestamp()` methods, and with
+`session.lazy_write` on PHP no longer calls `write()` for unchanged data. If your
+subclass overrides `read()`/`write()`/`destroy()` (for example to prefix or
+encrypt ids or payloads), override **both** new methods as well, or active
+sessions stop being renewed and ids are looked up under the wrong key. A subclass
+must not declare its own `validateId` or `updateTimestamp` with a different
+signature or a non-public visibility.
 
 ## A worked example — in-memory adapter
 

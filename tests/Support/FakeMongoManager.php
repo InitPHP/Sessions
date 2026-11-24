@@ -14,8 +14,13 @@ final class FakeMongoManager
     /** @var array<string, array<string, mixed>> documents keyed by `_id` */
     public array $documents = [];
 
+    /** When true, every command throws, like a lost connection. */
+    public bool $failing = false;
+
     public function executeQuery(string $namespace, FakeMongoQuery $query): FakeMongoCursor
     {
+        $this->failIfDown();
+
         $rows = [];
         foreach ($this->documents as $document) {
             if ($this->matches($document, $query->filter)) {
@@ -28,6 +33,8 @@ final class FakeMongoManager
 
     public function executeBulkWrite(string $namespace, FakeMongoBulkWrite $bulk): FakeMongoWriteResult
     {
+        $this->failIfDown();
+
         $matched = 0;
         $deleted = 0;
 
@@ -59,6 +66,13 @@ final class FakeMongoManager
         }
 
         return new FakeMongoWriteResult($matched, $deleted);
+    }
+
+    private function failIfDown(): void
+    {
+        if ($this->failing) {
+            throw new \RuntimeException('Connection lost');
+        }
     }
 
     /**

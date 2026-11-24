@@ -7,6 +7,7 @@ namespace InitPHP\Sessions\Tests\Unit\Adapters;
 use InitPHP\Sessions\Adapters\FileAdapter;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\TestCase;
 
 final class FileAdapterTest extends TestCase
@@ -132,8 +133,41 @@ final class FileAdapterTest extends TestCase
 
     public function testUpdateTimestampNeverCreatesASession(): void
     {
-        self::assertFalse($this->adapter()->updateTimestamp('ghost', 'data'));
+        // A session destroyed meanwhile has nothing to renew: no error, no file.
+        self::assertTrue($this->adapter()->updateTimestamp('ghost', 'data'));
         self::assertFileDoesNotExist($this->dir . '/sess_ghost');
+    }
+
+    #[RequiresFunction('shell_exec')]
+    public function testValidateIdSeesAnMtimeChangedByAnotherProcess(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('abc', 'data');
+        self::assertTrue($adapter->validateId('abc'), 'primes the stat cache with a fresh mtime');
+
+        // Another process (not PHP's touch(), which would clear the cache).
+        shell_exec('touch -t 200001010000 ' . escapeshellarg($this->dir . '/sess_abc'));
+
+        self::assertFalse($adapter->validateId('abc'));
+    }
+
+    public function testASubclassMayDeclareItsOwnHelperWithTheNameOfAnInternalOne(): void
+    {
+        $adapter = new class (['path' => $this->dir]) extends FileAdapter {
+            private function resolveSessionLifetime(): string
+            {
+                return 'unrelated';
+            }
+
+            public function ownHelper(): string
+            {
+                return $this->resolveSessionLifetime();
+            }
+        };
+        $adapter->write('abc', 'data');
+
+        self::assertSame('unrelated', $adapter->ownHelper());
+        self::assertTrue($adapter->validateId('abc'));
     }
 
     /**
@@ -162,7 +196,7 @@ final class FileAdapterTest extends TestCase
             $adapter = $this->adapter(['prefix' => '']);
 
             self::assertFalse($adapter->validateId($id));
-            self::assertFalse($adapter->updateTimestamp($id, 'x'));
+            self::assertTrue($adapter->updateTimestamp($id, 'x'), 'no such session, nothing to renew');
             self::assertSame('', $adapter->read($id));
             self::assertFalse($adapter->write($id, 'x'));
             self::assertTrue($adapter->destroy($id));

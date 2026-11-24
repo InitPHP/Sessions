@@ -65,7 +65,8 @@ document with that `_id` exists and its `timestamp` is less than
 `session.gc_maxlifetime` seconds old; otherwise the id is replaced by a fresh one.
 When the data did not change, `session.lazy_write` makes PHP call
 `updateTimestamp()`, which sets `timestamp` to now on the existing document
-instead of rewriting the payload.
+instead of rewriting the payload; it never creates a document, so a session
+destroyed meanwhile is not brought back. A driver error does not reject the id.
 
 ## Behaviour notes
 

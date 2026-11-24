@@ -89,26 +89,56 @@ final class CookieAdapterTest extends TestCase
 
     public function testValidateIdIsFalseWithoutAPayloadCookie(): void
     {
+        $_COOKIE[session_name()] = 'client-chosen-id';
         $adapter = new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]);
 
         self::assertFalse($adapter->validateId('client-chosen-id'));
+
+        unset($_COOKIE[session_name()]);
     }
 
-    public function testValidateIdIsTrueWithADecryptablePayloadCookie(): void
+    public function testValidateIdIsTrueOnlyForTheIdTheClientPresented(): void
     {
         $_COOKIE[self::NAME] = $this->encryptWith(self::KEY, 'serialized-session');
+        $_COOKIE[session_name()] = 'presented-id';
 
         $adapter = new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]);
 
-        self::assertTrue($adapter->validateId('sid'));
+        self::assertTrue($adapter->validateId('presented-id'));
+        // An id PHP just generated (session_create_id(), regenerate) is never "taken".
+        self::assertFalse($adapter->validateId('freshly-generated-id'));
+
+        unset($_COOKIE[session_name()]);
+    }
+
+    public function testValidateIdIsFalseWhenTheRequestCarriesNoSessionCookie(): void
+    {
+        $_COOKIE[self::NAME] = $this->encryptWith(self::KEY, 'serialized-session');
+        unset($_COOKIE[session_name()]);
+
+        $adapter = new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]);
+
+        self::assertFalse($adapter->validateId('any-id'));
     }
 
     public function testValidateIdIsFalseForATamperedOrForeignKeyCookie(): void
     {
+        $_COOKIE[session_name()] = 'presented-id';
+
         $_COOKIE[self::NAME] = 'not-a-valid-ciphertext';
-        self::assertFalse((new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]))->validateId('sid'));
+        self::assertFalse((new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]))->validateId('presented-id'));
 
         $_COOKIE[self::NAME] = $this->encryptWith('a-totally-different-key', 'secret');
-        self::assertFalse((new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]))->validateId('sid'));
+        self::assertFalse((new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]))->validateId('presented-id'));
+
+        unset($_COOKIE[session_name()]);
+    }
+
+    public function testUpdateTimestampWithoutAPayloadCookieSendsNothing(): void
+    {
+        $adapter = new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]);
+
+        // No session to renew: succeeds without calling setcookie().
+        self::assertTrue($adapter->updateTimestamp('sid', ''));
     }
 }

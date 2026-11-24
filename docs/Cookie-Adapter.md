@@ -61,16 +61,27 @@ Session::createImmutable($adapter)->start();
 
 The session data travels in the payload cookie, not on the server, so the session
 id is not a lookup key here. With `session.use_strict_mode` on, an id counts as
-known only when the request also carries a payload cookie that decrypts with your
-`key`. A first visit, an expired, tampered or foreign-key payload cookie, or an id
-sent without its payload therefore gets a fresh id. This keeps client-chosen ids
-out, but it is not an authentication check: anyone who holds a valid payload
-cookie can pair it with any id, which is why the cookie itself must stay secret
-(`secure`, `httponly`) and why you still call `regenerateId(true)` after login.
+known only when it is the id the client sent in its session cookie **and** the
+same request carries a payload cookie that decrypts with your `key`. A first
+visit, a missing, tampered or foreign-key payload cookie, or an id sent without
+its payload therefore gets a fresh id. Ids PHP generates itself
+(`session_create_id()`, `regenerateId()`) are never reported as taken, so they keep
+working. Strict mode needs the id to travel in the session cookie
+(`session.use_only_cookies`); an id passed in a URL or set with `setID()` is
+replaced.
+
+This keeps client-chosen ids out, but it is not an authentication check, and it
+does not enforce a lifetime on the server: the payload carries no timestamp, so
+`ttl` is enforced by the browser's cookie `expires` only. Anyone who holds a
+valid payload cookie can pair it with any id, and a copied payload cookie stays
+valid after `ttl` has passed or after logout until you rotate `key`. Keep the
+cookie secret (`secure`, `httponly`) and still call `regenerateId(true)` after
+login.
 
 When the data did not change, `session.lazy_write` makes PHP call
 `updateTimestamp()`, which sends the payload cookie again with a fresh `ttl`, so
 the cookie's expiry slides with activity just as it does when the data changes.
+An unchanged session that has no payload cookie yet sets none.
 
 ## Constraints to keep in mind
 

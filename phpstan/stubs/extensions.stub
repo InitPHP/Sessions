@@ -48,6 +48,8 @@ namespace {
 
         public function set(mixed $key, mixed $value, int $flag = 0, int $expire = 0): bool {}
 
+        public function replace(mixed $key, mixed $value, int $flag = 0, int $expire = 0): bool {}
+
         public function delete(mixed $key, int $timeout = 0): bool {}
 
         public function close(): bool {}

@@ -12,6 +12,9 @@ final class FakeRedis
 {
     public int $clock = 0;
 
+    /** When true, every read and expiry command throws, like a lost connection. */
+    public bool $failing = false;
+
     /** @var array<string, array{0: string, 1: int|null}> value and absolute expiry */
     public array $items = [];
 
@@ -40,6 +43,8 @@ final class FakeRedis
 
     public function get(string $key): mixed
     {
+        $this->failIfDown();
+
         return isset($this->items[$key]) ? $this->items[$key][0] : false;
     }
 
@@ -72,11 +77,15 @@ final class FakeRedis
 
     public function exists(string $key): int
     {
+        $this->failIfDown();
+
         return isset($this->items[$key]) ? 1 : 0;
     }
 
     public function expire(string $key, int $timeout): bool
     {
+        $this->failIfDown();
+
         if (!isset($this->items[$key])) {
             return false;
         }
@@ -84,5 +93,12 @@ final class FakeRedis
         $this->items[$key][1] = $this->clock + $timeout;
 
         return true;
+    }
+
+    private function failIfDown(): void
+    {
+        if ($this->failing) {
+            throw new \RuntimeException('Connection lost');
+        }
     }
 }

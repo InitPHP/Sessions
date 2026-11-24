@@ -76,9 +76,10 @@ matches.
 
 ### Strict mode and lazy write
 
-The adapters in this package support `session.use_strict_mode` and
-`session.lazy_write`. They implement PHP's `SessionUpdateTimestampHandlerInterface`
-(through [`AbstractAdapter`](Custom-Adapters.md)), which PHP uses for two things:
+The adapters that ship with this package (File, PDO, Redis, Memcache(d), MongoDB
+and Cookie) support `session.use_strict_mode` and `session.lazy_write`. They
+implement PHP's `SessionUpdateTimestampHandlerInterface`, which PHP uses for two
+things:
 
 - **Strict mode.** At `start()`, PHP asks the adapter whether the id the client
   sent belongs to a stored session (`validateId()`). If it does not (an id the
@@ -89,14 +90,17 @@ The adapters in this package support `session.use_strict_mode` and
 - **Lazy write.** When a request does not change the session data, PHP skips
   `write()` and calls `updateTimestamp()` instead, which renews the session's
   lifetime (file modification time, row/document timestamp, key TTL, cookie
-  expiry) without rewriting the payload. `session.lazy_write` is on by default.
+  expiry) without rewriting the payload. It only renews: a session that was
+  destroyed or regenerated in the meantime is not brought back.
+  `session.lazy_write` is on by default.
 
 How "exists" is decided depends on the store: see the *Strict mode and lazy
 write* section of each adapter page ([File](File-Adapter.md),
 [Redis](Redis-Adapter.md), [PDO](PDO-Adapter.md), [Cookie](Cookie-Adapter.md),
 [Memcache(d)](Memcache-Adapter.md), [MongoDB](MongoDB-Adapter.md)). A
-[custom adapter](Custom-Adapters.md) that extends `AbstractAdapter` gets a working
-default; override it when your store can answer more cheaply.
+[custom adapter](Custom-Adapters.md#strict-mode-and-lazy-write) does **not** get
+this automatically: `AbstractAdapter` is unchanged, and you opt in by
+implementing the interface yourself.
 
 Strict mode is not a replacement for
 [`regenerateId(true)`](#regenerateidbool-deleteoldsession--false-bool): call it

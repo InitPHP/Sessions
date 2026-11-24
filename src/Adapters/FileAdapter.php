@@ -17,7 +17,10 @@ namespace InitPHP\Sessions\Adapters;
 
 use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
+use InitPHP\Sessions\Internal\ResolvesSessionLifetime;
+use SessionUpdateTimestampHandlerInterface;
 
+use function clearstatcache;
 use function file_exists;
 use function file_get_contents;
 use function file_put_contents;
@@ -48,10 +51,12 @@ use function unlink;
  *
  * With `session.use_strict_mode` on, a session file counts as existing only
  * while it is younger than `session.gc_maxlifetime`; the file's modification
- * time is renewed by {@see updateTimestamp()}.
+ * time is renewed by {@see updateTimestamp()}, which never creates a file.
  */
-class FileAdapter extends AbstractAdapter
+class FileAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
 {
+    use ResolvesSessionLifetime;
+
     private string $path;
 
     private string $prefix = 'sess_';
@@ -86,20 +91,26 @@ class FileAdapter extends AbstractAdapter
             return false;
         }
 
-        $mtime = file_exists($file) ? @filemtime($file) : false;
+        // filemtime() answers from PHP's stat cache, which a long-lived worker
+        // never clears between requests.
+        clearstatcache(true, $file);
+        $mtime = @filemtime($file);
 
-        return $mtime !== false && $mtime >= time() - $this->sessionLifetime();
+        return $mtime !== false && $mtime >= time() - $this->resolveSessionLifetime();
     }
 
     public function updateTimestamp(string $id, string $data): bool
     {
         $file = $this->filename($id);
         if ($file === null) {
-            return false;
+            return true;
         }
 
-        // Only renew an existing session; never create a file here.
-        return file_exists($file) && @touch($file);
+        clearstatcache(true, $file);
+
+        // A session that is gone (destroyed, regenerated or garbage-collected
+        // while this request ran) must stay gone: nothing to renew.
+        return !file_exists($file) || @touch($file);
     }
 
     public function read(string $id): string|false

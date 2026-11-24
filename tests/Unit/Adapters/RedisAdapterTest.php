@@ -82,14 +82,28 @@ final class RedisAdapterTest extends TestCase
         self::assertSame('a|i:1;', $adapter->read('sid'));
     }
 
-    public function testUpdateTimestampStoresTheDataAgainWhenTheKeyVanished(): void
+    public function testUpdateTimestampDoesNotResurrectADestroyedSession(): void
     {
         $adapter = $this->adapter();
+        $adapter->write('sid', 'u|s:5:"admin";');
+        // A parallel request logs out (or regenerates the id) while this one runs.
+        $adapter->destroy('sid');
 
-        self::assertTrue($adapter->updateTimestamp('sid', 'a|i:1;'));
+        self::assertTrue($adapter->updateTimestamp('sid', 'u|s:5:"admin";'));
 
-        self::assertSame('a|i:1;', $adapter->read('sid'));
-        self::assertSame(100, $this->redis->ttlOf('p:sid'));
+        self::assertFalse($adapter->validateId('sid'));
+        self::assertSame('', $adapter->read('sid'));
+    }
+
+    public function testAStoreFailureDoesNotRejectTheId(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('sid', 'a|i:1;');
+        $this->redis->failing = true;
+
+        self::assertTrue($adapter->validateId('sid'));
+        self::assertFalse($adapter->read('sid'));
+        self::assertFalse($adapter->updateTimestamp('sid', 'a|i:1;'));
     }
 
     public function testUpdateTimestampKeepsAKeyThatHasNoExpiry(): void

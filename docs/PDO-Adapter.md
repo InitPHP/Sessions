@@ -90,8 +90,11 @@ with that `id` exists and its `sess_timestamp` is less than
 `session.gc_maxlifetime` seconds old (and, with `withIPAddress`, the IP matches);
 otherwise the id is replaced by a fresh one. When the data did not change,
 `session.lazy_write` makes PHP call `updateTimestamp()`, which runs
-`UPDATE ... SET sess_timestamp = ...` on the existing row (it never inserts one)
-instead of rewriting the payload.
+`UPDATE ... SET sess_timestamp = ...` on the existing row (it never inserts one,
+so a session destroyed meanwhile is not brought back) instead of rewriting the
+payload. If the database itself fails, the id is not rejected (that would replace
+the user's session id over an outage); `read()` fails and the session does not
+start.
 
 ## Garbage collection
 

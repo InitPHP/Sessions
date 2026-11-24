@@ -18,10 +18,12 @@ namespace InitPHP\Sessions\Adapters;
 use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
 use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
+use SessionUpdateTimestampHandlerInterface;
 
 use function base64_decode;
 use function base64_encode;
 use function class_exists;
+use function session_name;
 use function setcookie;
 use function time;
 
@@ -43,16 +45,21 @@ use function time;
  *  - `samesite` (string) `Lax`, `Strict` or `None`. Defaults to `Lax`.
  *
  * The session id is not a lookup key here (the data travels with the
- * request), so strict mode is answered from the payload cookie:
- * {@see validateId()} accepts an id only when the request carries a payload
- * cookie that decrypts with the configured key. A request without one (first
- * visit, expired, tampered or foreign-key cookie) therefore gets a fresh id.
- * {@see updateTimestamp()} re-sends the cookie so its expiry slides with
- * `session.lazy_write`.
+ * request), so strict mode is answered from the request: {@see validateId()}
+ * accepts an id only when it is the session id the client sent in its session
+ * cookie *and* the request carries a payload cookie that decrypts with the
+ * configured key. A first visit, a missing, tampered or foreign-key payload
+ * cookie, or an id the client chose without the matching payload therefore gets
+ * a fresh id. Ids PHP generates itself (`session_create_id()`,
+ * `session_regenerate_id()`) are never reported as taken. Strict mode needs the
+ * id to travel in the session cookie (`session.use_only_cookies`).
+ * {@see updateTimestamp()} re-sends the payload cookie so its client-side
+ * expiry slides with `session.lazy_write`. The payload carries no timestamp, so
+ * the lifetime is enforced by the browser only.
  *
  * @requires initphp/encryption
  */
-class CookieAdapter extends AbstractAdapter
+class CookieAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
 {
     private string $name;
 
@@ -111,11 +118,21 @@ class CookieAdapter extends AbstractAdapter
             $this->decode();
         }
 
-        return $this->hasPayload;
+        // PHP also calls validateId() to check ids it has just generated for
+        // collisions; those never equal the id the client presented.
+        $presented = $_COOKIE[session_name()] ?? null;
+
+        return $this->hasPayload && \is_string($presented) && $presented === $id;
     }
 
     public function updateTimestamp(string $id, string $data): bool
     {
+        // Without a payload cookie there is no session to renew; do not
+        // create one (an unchanged empty session must not set a cookie).
+        if (!$this->hasPayload) {
+            return true;
+        }
+
         return $this->write($id, $data);
     }
 

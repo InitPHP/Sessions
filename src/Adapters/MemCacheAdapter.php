@@ -20,12 +20,12 @@ use InitPHP\Sessions\Exceptions\SessionAdapterException;
 use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
 use Memcache;
 use Memcached;
+use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
 use function array_change_key_case;
 use function array_merge;
 use function class_exists;
-use function method_exists;
 
 use const CASE_LOWER;
 
@@ -44,9 +44,13 @@ use const CASE_LOWER;
  *  - `ttl`    (int)    Item expiry in seconds. Defaults to `86400`.
  *
  * The server drops expired items itself, so an item that exists is a live
- * session ({@see validateId()}); {@see updateTimestamp()} renews its expiry.
+ * session ({@see validateId()}); {@see updateTimestamp()} renews its expiry and
+ * never creates an item. Only a "not found" answer counts as "no such session":
+ * a server error neither rejects the id nor reads as an empty session. (The
+ * legacy Memcache driver cannot tell the two apart; there a failed `get()` is
+ * treated as "not found".)
  */
-class MemCacheAdapter extends AbstractAdapter
+class MemCacheAdapter extends AbstractAdapter implements SessionUpdateTimestampHandlerInterface
 {
     protected const DRIVER_MEMCACHE = 1;
     protected const DRIVER_MEMCACHED = 2;
@@ -109,28 +113,30 @@ class MemCacheAdapter extends AbstractAdapter
 
             $client->get($key);
 
-            return $client->getResultCode() === Memcached::RES_SUCCESS;
+            // Only an explicit "not found" means the session does not exist;
+            // any other failure must not replace the user's session id.
+            return $client->getResultCode() !== Memcached::RES_NOTFOUND;
         } catch (Throwable) {
-            return false;
+            return true;
         }
     }
 
     public function updateTimestamp(string $id, string $data): bool
     {
         try {
+            $key = $this->key($id);
+            $ttl = (int) $this->credentials['ttl'];
             $client = $this->getMemcache();
 
-            // Memcached can renew the expiry in place; the legacy Memcache
-            // driver cannot, so the payload is stored again.
-            if (
-                $client instanceof Memcached
-                && method_exists($client, 'touch')
-                && $client->touch($this->key($id), (int) $this->credentials['ttl'])
-            ) {
-                return true;
+            // Renew only an item that still exists: a session that is gone
+            // (destroyed or regenerated meanwhile) must stay gone.
+            if ($client instanceof Memcache) {
+                // The legacy driver has no touch(); replace() fails on a
+                // missing key, which is then told apart from a real failure.
+                return $client->replace($key, $data, 0, $ttl) !== false || $client->get($key) === false;
             }
 
-            return $this->write($id, $data);
+            return $client->touch($key, $ttl) || $client->getResultCode() === Memcached::RES_NOTFOUND;
         } catch (Throwable) {
             return false;
         }
@@ -149,8 +155,13 @@ class MemCacheAdapter extends AbstractAdapter
             }
 
             $data = $client->get($key);
-            if ($client->getResultCode() === Memcached::RES_NOTFOUND) {
+            $code = $client->getResultCode();
+            if ($code === Memcached::RES_NOTFOUND) {
                 return '';
+            }
+            if ($code !== Memcached::RES_SUCCESS) {
+                // A server error is a read failure, not an empty session.
+                return false;
             }
 
             return \is_string($data) ? $data : '';

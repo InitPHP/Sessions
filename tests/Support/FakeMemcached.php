@@ -13,11 +13,15 @@ final class FakeMemcached
     public const OPT_BINARY_PROTOCOL = 18;
     public const RES_SUCCESS = 0;
     public const RES_NOTFOUND = 16;
+    public const RES_FAILURE = 1;
 
     public int $clock = 0;
 
     /** @var array<string, array{0: string, 1: int|null}> value and absolute expiry */
     public array $items = [];
+
+    /** When true, get() and touch() fail with a server error instead of answering. */
+    public bool $failing = false;
 
     private int $resultCode = self::RES_SUCCESS;
 
@@ -61,6 +65,12 @@ final class FakeMemcached
 
     public function get(string $key): mixed
     {
+        if ($this->failing) {
+            $this->resultCode = self::RES_FAILURE;
+
+            return false;
+        }
+
         if (!isset($this->items[$key])) {
             $this->resultCode = self::RES_NOTFOUND;
 
@@ -81,6 +91,12 @@ final class FakeMemcached
 
     public function touch(string $key, int $expiration = 0): bool
     {
+        if ($this->failing) {
+            $this->resultCode = self::RES_FAILURE;
+
+            return false;
+        }
+
         if (!isset($this->items[$key])) {
             $this->resultCode = self::RES_NOTFOUND;
 

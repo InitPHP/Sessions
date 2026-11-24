@@ -79,12 +79,27 @@ final class MemCacheAdapterTest extends TestCase
         self::assertSame('a|i:1;', $adapter->read('sid'));
     }
 
-    public function testUpdateTimestampStoresTheDataAgainWhenTheItemVanished(): void
+    public function testUpdateTimestampDoesNotResurrectADestroyedSession(): void
     {
         $adapter = $this->adapter();
+        $adapter->write('sid', 'u|s:5:"admin";');
+        $adapter->destroy('sid');
 
-        self::assertTrue($adapter->updateTimestamp('sid', 'a|i:1;'));
+        self::assertTrue($adapter->updateTimestamp('sid', 'u|s:5:"admin";'));
 
-        self::assertSame('a|i:1;', $adapter->read('sid'));
+        self::assertFalse($adapter->validateId('sid'));
+        self::assertSame('', $adapter->read('sid'));
+    }
+
+    public function testOnlyNotFoundCountsAsNoSuchSession(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('sid', 'a|i:1;');
+        $this->client($adapter)->failing = true;
+
+        // A server error must neither reject the id nor read as an empty session.
+        self::assertTrue($adapter->validateId('sid'));
+        self::assertFalse($adapter->read('sid'));
+        self::assertFalse($adapter->updateTimestamp('sid', 'a|i:1;'));
     }
 }

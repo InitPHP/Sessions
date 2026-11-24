@@ -8,7 +8,10 @@ use InitPHP\Encryption\Encrypt;
 use InitPHP\Encryption\OpenSSL;
 use InitPHP\Sessions\Adapters\CookieAdapter;
 use InitPHP\Sessions\Adapters\FileAdapter;
+use InitPHP\Sessions\Adapters\PDOAdapter;
 use InitPHP\Sessions\Session;
+use InitPHP\Sessions\Tests\Support\StrictArrayAdapter;
+use PDO;
 use PHPUnit\Framework\Attributes\PreserveGlobalState;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
@@ -292,5 +295,238 @@ final class StrictModeTest extends TestCase
         self::assertSame(1, $adapter->renewals, 'unchanged data must go through updateTimestamp()');
         // updateTimestamp() re-sends the cookie through write() so its expiry slides.
         self::assertSame(1, $adapter->writes);
+    }
+
+    public function testRegenerateIdWithDeletionMovesTheSessionToANewId(): void
+    {
+        $adapter = new FileAdapter(['path' => $this->dir]);
+        $first = $this->request($adapter, null, static function (): void {
+            Session::set('user', 'admin');
+        });
+
+        $regenerated = '';
+        $second = $this->request($adapter, $first, static function () use (&$regenerated): void {
+            $regenerated = '';
+            self::assertTrue(Session::regenerateId(true));
+            $regenerated = Session::getID();
+        });
+
+        self::assertSame($first, $second);
+        self::assertNotSame($first, $regenerated);
+        self::assertFileDoesNotExist($this->dir . '/sess_' . $first);
+
+        $seen = null;
+        $third = $this->request($adapter, $regenerated, static function () use (&$seen): void {
+            $seen = Session::get('user');
+        });
+        self::assertSame($regenerated, $third);
+        self::assertSame('admin', $seen);
+
+        // The old id is no longer known, so a client replaying it gets a fresh one.
+        $replayed = $this->request($adapter, $first, static function () use (&$seen): void {
+            $seen = Session::get('user');
+        });
+        self::assertNotSame($first, $replayed);
+        self::assertNull($seen);
+    }
+
+    public function testRegenerateIdWithoutDeletionKeepsTheOldRecordUntilItExpires(): void
+    {
+        $adapter = new FileAdapter(['path' => $this->dir]);
+        $first = $this->request($adapter, null, static function (): void {
+            Session::set('user', 'admin');
+        });
+
+        $regenerated = '';
+        $this->request($adapter, $first, static function () use (&$regenerated): void {
+            self::assertTrue(Session::regenerateId(false));
+            $regenerated = Session::getID();
+        });
+
+        self::assertNotSame($first, $regenerated);
+        self::assertFileExists($this->dir . '/sess_' . $first);
+        self::assertFileExists($this->dir . '/sess_' . $regenerated);
+    }
+
+    public function testADestroyedSessionIdIsNotAcceptedAgain(): void
+    {
+        $adapter = new FileAdapter(['path' => $this->dir]);
+        $first = $this->request($adapter, null, static function (): void {
+            Session::set('user', 'admin');
+        });
+
+        $this->request($adapter, $first, static function (): void {
+            self::assertTrue(Session::destroy());
+        });
+        self::assertFileDoesNotExist($this->dir . '/sess_' . $first);
+
+        $seen = 'unset';
+        $replayed = $this->request($adapter, $first, static function () use (&$seen): void {
+            $seen = Session::get('user');
+        });
+
+        self::assertNotSame($first, $replayed);
+        self::assertNull($seen);
+    }
+
+    public function testASessionDestroyedByAParallelRequestStaysDestroyedAndRaisesNoWarning(): void
+    {
+        $adapter = new FileAdapter(['path' => $this->dir]);
+        $first = $this->request($adapter, null, static function (): void {
+            Session::set('user', 'admin');
+        });
+
+        $warnings = [];
+        set_error_handler(static function (int $no, string $message) use (&$warnings): bool {
+            $warnings[] = $message;
+
+            return true;
+        }, E_ALL & ~E_DEPRECATED);
+
+        try {
+            // A read-only request; while it runs, a parallel request logs out.
+            $dir = $this->dir;
+            $this->request($adapter, $first, static function () use ($dir, $first): void {
+                Session::get('user');
+                unlink($dir . '/sess_' . $first);
+            });
+        } finally {
+            restore_error_handler();
+        }
+
+        self::assertSame([], $warnings);
+        self::assertFileDoesNotExist($this->dir . '/sess_' . $first, 'the destroyed session must not come back');
+    }
+
+    public function testSessionCreateIdStillWorksInAnActiveSession(): void
+    {
+        $adapter = new FileAdapter(['path' => $this->dir]);
+        $first = $this->request($adapter, null, static function (): void {
+            Session::set('user', 'admin');
+        });
+
+        $created = null;
+        $this->request($adapter, $first, static function () use (&$created): void {
+            $created = session_create_id('x-');
+        });
+
+        self::assertIsString($created);
+        self::assertStringStartsWith('x-', $created);
+    }
+
+    public function testACustomAdapterThatImplementsTheInterfaceGetsStrictMode(): void
+    {
+        $adapter = new StrictArrayAdapter();
+        $first = $this->request($adapter, null, static function (): void {
+            Session::set('user', 'admin');
+        });
+
+        $seen = null;
+        $second = $this->request($adapter, $first, static function () use (&$seen): void {
+            $seen = Session::get('user');
+        });
+        self::assertSame($first, $second);
+        self::assertSame('admin', $seen);
+
+        $attackerId = 'attackerchosenid0123456789abcdef';
+        $third = $this->request($adapter, $attackerId, static function (): void {});
+        self::assertNotSame($attackerId, $third);
+    }
+
+    #[RequiresPhpExtension('pdo_sqlite')]
+    public function testADatabaseOutageDoesNotReplaceTheUsersSessionId(): void
+    {
+        $pdo = new PDO('sqlite::memory:');
+        $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $pdo->exec('CREATE TABLE sessions (id VARCHAR(255) NOT NULL PRIMARY KEY, sess_timestamp TEXT NULL, sess_ip_address VARCHAR(48) NULL, sess_data TEXT NOT NULL)');
+        $adapter = new PDOAdapter(['pdo' => $pdo, 'table' => 'sessions']);
+
+        $first = $this->request($adapter, null, static function (): void {
+            Session::set('user', 'admin');
+        });
+        $pdo->exec('DROP TABLE sessions');
+
+        // Records which ids the session machinery tries to read.
+        $recording = new class (['pdo' => $pdo, 'table' => 'sessions']) extends PDOAdapter {
+            /** @var list<string> */
+            public array $reads = [];
+
+            public function read(string $id): string|false
+            {
+                $this->reads[] = $id;
+
+                return parent::read($id);
+            }
+        };
+
+        session_id($first);
+        $_COOKIE[session_name()] = $first;
+        Session::createImmutable($recording);
+
+        set_error_handler(static fn(): bool => true);
+
+        try {
+            $started = Session::start(self::OPTIONS);
+        } finally {
+            restore_error_handler();
+        }
+
+        // The session does not start (read fails), but the id the user holds
+        // was not rejected and swapped for a fresh one.
+        self::assertFalse($started);
+        self::assertSame([$first], $recording->reads);
+    }
+
+    #[RequiresPhpExtension('openssl')]
+    public function testCookieAdapterKeepsRegenerateIdAndCreateIdWorking(): void
+    {
+        $this->requireEncryption();
+        $_COOKIE['payload'] = $this->payloadCookie('user|s:5:"admin";');
+        $knownId = 'issuedbytheserver0123456789abcdef';
+
+        $regenerated = '';
+        $created = null;
+        $id = $this->request($this->cookieAdapter(), $knownId, static function () use (&$regenerated, &$created): void {
+            // Ids PHP generates are collision-checked through validateId(); an
+            // adapter that reports every id as taken would make both fail.
+            $created = session_create_id('x-');
+            self::assertTrue(Session::regenerateId(true));
+            $regenerated = Session::getID();
+        });
+
+        self::assertSame($knownId, $id);
+        self::assertIsString($created);
+        self::assertNotSame('', $regenerated);
+        self::assertNotSame($knownId, $regenerated);
+
+        // The next request presents the regenerated id together with the payload.
+        $seen = null;
+        $next = $this->request($this->cookieAdapter(), $regenerated, static function () use (&$seen): void {
+            $seen = Session::get('user');
+        });
+        self::assertSame($regenerated, $next);
+        self::assertSame('admin', $seen);
+    }
+
+    #[RequiresPhpExtension('openssl')]
+    public function testCookieAdapterDoesNotSetACookieForAnUnchangedEmptySession(): void
+    {
+        $this->requireEncryption();
+
+        $adapter = new class (['name' => 'payload', 'key' => self::COOKIE_KEY, 'ttl' => 3600]) extends CookieAdapter {
+            public int $writes = 0;
+
+            public function write(string $id, string $data): bool
+            {
+                ++$this->writes;
+
+                return parent::write($id, $data);
+            }
+        };
+
+        // First visit that stores nothing: no payload cookie, so nothing to renew.
+        $this->request($adapter, null, static function (): void {});
+
+        self::assertSame(0, $adapter->writes);
     }
 }

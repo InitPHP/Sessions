@@ -79,13 +79,27 @@ final class MongoDBAdapterTest extends TestCase
         self::assertSame('a|i:1;', $adapter->read('sid'));
     }
 
-    public function testUpdateTimestampStoresTheDataAgainWhenTheDocumentVanished(): void
+    public function testUpdateTimestampDoesNotResurrectADestroyedSession(): void
     {
         $adapter = $this->adapter();
+        $adapter->write('sid', 'u|s:5:"admin";');
+        $adapter->destroy('sid');
 
-        self::assertTrue($adapter->updateTimestamp('sid', 'a|i:1;'));
+        self::assertTrue($adapter->updateTimestamp('sid', 'u|s:5:"admin";'));
 
-        self::assertSame('a|i:1;', $adapter->read('sid'));
+        self::assertFalse($adapter->validateId('sid'));
+        self::assertSame('', $adapter->read('sid'));
+        self::assertSame([], $this->manager->documents);
+    }
+
+    public function testAStoreFailureDoesNotRejectTheId(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('sid', 'a|i:1;');
+        $this->manager->failing = true;
+
         self::assertTrue($adapter->validateId('sid'));
+        self::assertFalse($adapter->read('sid'));
+        self::assertFalse($adapter->updateTimestamp('sid', 'a|i:1;'));
     }
 }
