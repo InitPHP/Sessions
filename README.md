@@ -81,7 +81,9 @@ echo $_SESSION['username'] ?? 'Undefined';
 
 All adapters implement `InitPHP\Sessions\Interfaces\AdapterInterface`, which
 extends PHP's native `SessionHandlerInterface`. Pass an adapter to
-`createImmutable()` and it becomes the session's save handler.
+`createImmutable()` and it becomes the session's save handler. The bundled adapters also support
+`session.use_strict_mode` (PHP replaces a session id the server did not issue) and
+`session.lazy_write` (an unchanged session only has its lifetime renewed).
 
 ### File
 

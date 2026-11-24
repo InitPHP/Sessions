@@ -57,4 +57,46 @@ final class ManagerTest extends TestCase
 
         self::assertTrue($manager->destroy());
     }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testSetIdReturnsTrueAndAppliesTheId(): void
+    {
+        $manager = new Manager();
+
+        self::assertTrue($manager->setID('abc123def456'));
+        self::assertSame('abc123def456', $manager->getID());
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testSetIdReturnsTrueWhenReplacingAnEarlierId(): void
+    {
+        $manager = new Manager();
+        $manager->setID('first-id');
+
+        self::assertTrue($manager->setID('second-id'));
+        self::assertSame('second-id', $manager->getID());
+    }
+
+    #[RunInSeparateProcess]
+    #[PreserveGlobalState(false)]
+    public function testSetIdReturnsFalseWhileASessionIsActive(): void
+    {
+        $manager = new Manager();
+        self::assertTrue($manager->start(['use_cookies' => '0', 'cache_limiter' => '']));
+        $activeId = $manager->getID();
+
+        // PHP refuses to change the id of an active session and warns about it.
+        set_error_handler(static fn(): bool => true, E_WARNING);
+
+        try {
+            self::assertFalse($manager->setID('another-id'));
+        } finally {
+            restore_error_handler();
+        }
+
+        self::assertSame($activeId, $manager->getID());
+        $manager->destroy();
+    }
 }

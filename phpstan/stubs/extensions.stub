@@ -29,6 +29,12 @@ namespace {
 
         /** @return Redis|int|false */
         public function del(string ...$keys) {}
+
+        /** @return Redis|int|bool */
+        public function exists(mixed $key, mixed ...$otherKeys) {}
+
+        /** @return Redis|bool */
+        public function expire(string $key, int $timeout, ?string $mode = null) {}
     }
 
     class Memcache
@@ -42,6 +48,8 @@ namespace {
 
         public function set(mixed $key, mixed $value, int $flag = 0, int $expire = 0): bool {}
 
+        public function replace(mixed $key, mixed $value, int $flag = 0, int $expire = 0): bool {}
+
         public function delete(mixed $key, int $timeout = 0): bool {}
 
         public function close(): bool {}
@@ -51,6 +59,7 @@ namespace {
     {
         public const OPT_BINARY_PROTOCOL = 18;
         public const RES_NOTFOUND = 16;
+        public const RES_BAD_KEY_PROVIDED = 33;
         public const RES_SUCCESS = 0;
 
         public function addServer(string $host, int $port, int $weight = 0): bool {}
@@ -66,6 +75,8 @@ namespace {
         public function getResultCode(): int {}
 
         public function set(string $key, mixed $value, int $expiration = 0): bool {}
+
+        public function touch(string $key, int $expiration = 0): bool {}
 
         public function delete(string $key, int $time = 0): bool {}
 
@@ -138,5 +149,7 @@ namespace MongoDB\Driver {
         public function getModifiedCount(): ?int {}
 
         public function getUpsertedCount(): ?int {}
+
+        public function getMatchedCount(): ?int {}
     }
 }

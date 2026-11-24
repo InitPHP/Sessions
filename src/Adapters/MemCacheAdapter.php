@@ -18,8 +18,11 @@ namespace InitPHP\Sessions\Adapters;
 use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionAdapterException;
 use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
+use InitPHP\Sessions\Internal\GeneratesSessionIds;
 use Memcache;
 use Memcached;
+use SessionIdInterface;
+use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
 use function array_change_key_case;
@@ -41,9 +44,19 @@ use const CASE_LOWER;
  *  - `raw`    (bool)   Enables the binary protocol (Memcached only).
  *  - `prefix` (string) Key prefix. Defaults to none.
  *  - `ttl`    (int)    Item expiry in seconds. Defaults to `86400`.
+ *
+ * The server drops expired items itself, so an item that exists is a live
+ * session ({@see validateId()}); {@see updateTimestamp()} renews its expiry and
+ * never creates an item. Only a "not found" answer (or a key too long or
+ * malformed to be sent) counts as "no such session": a server error neither
+ * rejects the id nor reads as an empty session. (The
+ * legacy Memcache driver cannot tell the two apart; there a failed `get()` is
+ * treated as "not found".)
  */
-class MemCacheAdapter extends AbstractAdapter
+class MemCacheAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
+    use GeneratesSessionIds;
+
     protected const DRIVER_MEMCACHE = 1;
     protected const DRIVER_MEMCACHED = 2;
 
@@ -93,6 +106,48 @@ class MemCacheAdapter extends AbstractAdapter
         unset($this->memcache);
     }
 
+    public function validateId(string $id): bool
+    {
+        try {
+            $key = $this->key($id);
+            $client = $this->getMemcache();
+
+            if ($client instanceof Memcache) {
+                return $client->get($key) !== false;
+            }
+
+            $client->get($key);
+
+            // Only "not found" (or a key the client refuses to send, which can
+            // never hold a session) means the session does not exist; any
+            // other failure must not replace the user's session id.
+            return !$this->isMissing($client->getResultCode());
+        } catch (Throwable) {
+            return true;
+        }
+    }
+
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        try {
+            $key = $this->key($id);
+            $ttl = (int) $this->credentials['ttl'];
+            $client = $this->getMemcache();
+
+            // Renew only an item that still exists: a session that is gone
+            // (destroyed or regenerated meanwhile) must stay gone.
+            if ($client instanceof Memcache) {
+                // The legacy driver has no touch(); replace() fails on a
+                // missing key, which is then told apart from a real failure.
+                return $client->replace($key, $data, 0, $ttl) !== false || $client->get($key) === false;
+            }
+
+            return $client->touch($key, $ttl) || $this->isMissing($client->getResultCode());
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
     public function read(string $id): string|false
     {
         try {
@@ -106,8 +161,13 @@ class MemCacheAdapter extends AbstractAdapter
             }
 
             $data = $client->get($key);
-            if ($client->getResultCode() === Memcached::RES_NOTFOUND) {
+            $code = $client->getResultCode();
+            if ($this->isMissing($code)) {
                 return '';
+            }
+            if ($code !== Memcached::RES_SUCCESS) {
+                // A server error is a read failure, not an empty session.
+                return false;
             }
 
             return \is_string($data) ? $data : '';
@@ -142,6 +202,17 @@ class MemCacheAdapter extends AbstractAdapter
         } catch (Throwable) {
             return false;
         }
+    }
+
+    /**
+     * Whether a Memcached result code means "there is no such item": either it
+     * was not found, or the key is one the client refuses to send (too long or
+     * containing a space), which can never hold a session. The latter comes from
+     * the id the client chose and must not lock the user out.
+     */
+    private function isMissing(int $code): bool
+    {
+        return $code === Memcached::RES_NOTFOUND || $code === Memcached::RES_BAD_KEY_PROVIDED;
     }
 
     private function key(string $id): string

@@ -18,9 +18,13 @@ namespace InitPHP\Sessions\Adapters;
 use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionAdapterException;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
+use InitPHP\Sessions\Internal\GeneratesSessionIds;
+use InitPHP\Sessions\Internal\ResolvesSessionLifetime;
 use PDO;
 use PDOException;
 use PDOStatement;
+use SessionIdInterface;
+use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
 use function date;
@@ -42,7 +46,13 @@ use function time;
  *  - `password`      (string) Connection password (with `dsn`).
  *  - `table`         (string, required) Table that holds the sessions.
  *  - `withIPAddress` (bool)   When true, the client IP is also used as a match
- *                             condition on read/destroy. Defaults to false.
+ *                             condition on read/destroy and when validating or
+ *                             renewing a session. Defaults to false.
+ *
+ * With `session.use_strict_mode` on, a row counts as an existing session only
+ * while its `sess_timestamp` is younger than `session.gc_maxlifetime`;
+ * {@see updateTimestamp()} renews that timestamp and never inserts a row. A
+ * database error is not taken as proof that the session does not exist.
  *
  * Expected table layout:
  *
@@ -54,8 +64,11 @@ use function time;
  *      PRIMARY KEY (`id`)
  *  );
  */
-class PDOAdapter extends AbstractAdapter
+class PDOAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
+    use GeneratesSessionIds;
+    use ResolvesSessionLifetime;
+
     private PDO $pdo;
 
     private string $table;
@@ -94,6 +107,53 @@ class PDOAdapter extends AbstractAdapter
 
         $this->table = (string) $options['table'];
         $this->withIPAddress = (bool) ($options['withIPAddress'] ?? false);
+    }
+
+    public function validateId(string $id): bool
+    {
+        try {
+            $arguments = [
+                ':sess_id'   => $id,
+                ':threshold' => date('Y-m-d H:i:s', time() - $this->resolveSessionLifetime()),
+            ];
+            $sql = 'SELECT 1 FROM ' . $this->table . ' WHERE id = :sess_id AND sess_timestamp >= :threshold';
+            if ($this->withIPAddress) {
+                $sql .= ' AND sess_ip_address = :ip_address';
+                $arguments[':ip_address'] = $this->getIP();
+            }
+            $sql .= ' LIMIT 1';
+
+            $stmt = $this->query($sql, $arguments);
+            if ($stmt === false) {
+                // The store failed: do not reject the id (that would replace
+                // the user's session cookie over a transient outage). read()
+                // will fail the same way and the session simply does not start.
+                return true;
+            }
+
+            return $stmt->fetchColumn() !== false;
+        } catch (Throwable) {
+            return true;
+        }
+    }
+
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        try {
+            $arguments = [
+                ':sess_timestamp' => date('Y-m-d H:i:s', time()),
+                ':sess_id'        => $id,
+            ];
+            $sql = 'UPDATE ' . $this->table . ' SET sess_timestamp = :sess_timestamp WHERE id = :sess_id';
+            if ($this->withIPAddress) {
+                $sql .= ' AND sess_ip_address = :ip_address';
+                $arguments[':ip_address'] = $this->getIP();
+            }
+
+            return $this->query($sql, $arguments) !== false;
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     public function read(string $id): string|false

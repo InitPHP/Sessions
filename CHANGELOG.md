@@ -4,6 +4,78 @@ All notable changes to `initphp/sessions` are documented here. The format is bas
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The bundled adapters (`FileAdapter`, `PDOAdapter`, `RedisAdapter`,
+  `MemCacheAdapter`, `MongoDBAdapter`, `CookieAdapter`) now support
+  `session.use_strict_mode` and `session.lazy_write`: each implements PHP's
+  `SessionUpdateTimestampHandlerInterface`. `validateId()` tells PHP whether a
+  client-supplied id belongs to a stored, unexpired session (an unknown id is
+  replaced with a fresh one), and `updateTimestamp()` renews the lifetime of an
+  unchanged session (file mtime, row/document timestamp, key TTL, cookie expiry)
+  so active sessions do not expire early. For the server-side stores,
+  `updateTimestamp()` never creates a record: a session destroyed or regenerated
+  by a parallel request stays gone. (`CookieAdapter` keeps its data on the client,
+  so a parallel logout cannot be honoured there: the first request's response
+  re-sends the payload cookie.)
+- A store failure is not treated as "no such session": the id is not rejected, so
+  a database or cache outage does not replace users' session ids. `MemCacheAdapter`
+  (Memcached) now reports a server error from `read()` as a failure (`false`)
+  instead of an empty session; only "not found" (or a key Memcached refuses to
+  send, such as an id longer than 250 bytes) is an empty session.
+- `CookieAdapter` accepts an id only when it is the session id the request
+  presented (or the one the session was last read or written under, so closing
+  and re-opening a session in one request keeps its id) and the request carries a payload cookie that decrypts; ids PHP
+  generates (`session_create_id()`, `regenerateId()`) are never reported as taken.
+  `updateTimestamp()` does not create a payload cookie when the request carried none. The payload carries
+  no timestamp, so its lifetime remains enforced by the browser only.
+- The bundled adapters implement PHP's `SessionIdInterface` (`create_sid()`),
+  which PHP 8.6 asks every session handler to provide and PHP 9.0 will require.
+  The id has the shape PHP's own generator produces (`session.sid_length`
+  characters of `session.sid_bits_per_character` bits, 32 hexadecimal characters
+  by default); PHP collision-checks an id from `session_create_id()` (and from
+  `regenerateId()` under strict mode) through `validateId()`, but not the id of a
+  brand-new session, and applies any `session_create_id()` prefix itself. This removes the PHP 8.6 deprecation
+  warnings of the six adapters. Behaviour on PHP 8.2 to 8.5 is unchanged. Because
+  `AbstractAdapter` is unchanged, PHP 8.6 still warns once that `AbstractAdapter`
+  itself, and any custom adapter that extends it, lacks `create_sid()` and
+  `validateId()`; a custom adapter silences the warning for its own class by
+  implementing the interfaces (see `docs/Custom-Adapters.md`), but the one for
+  `AbstractAdapter` remains.
+- `docs/Custom-Adapters.md` explains how a custom adapter opts in by implementing
+  the interface itself, including the locking and "never create" rules.
+
+### Fixed
+
+- `Manager::setID()` (and `Session::setID()`) returned `false` even when PHP
+  accepted the id. It now returns `true` when the id was applied and `false`
+  when PHP refused it (for example, a session is already active).
+- `FileAdapter` no longer builds file names from unvalidated session ids: an id
+  containing anything other than letters, digits, `,`, `-` and `_` (such as a
+  path separator or `..`) is treated as a session that does not exist and is
+  never read, written or deleted.
+
+### Changed
+
+- `AbstractAdapter` and `AdapterInterface` are unchanged: custom adapters that
+  extend `AbstractAdapter` behave exactly as before and are not subject to strict
+  mode until they implement `SessionUpdateTimestampHandlerInterface` themselves.
+- With `session.use_strict_mode` on, a session id a bundled adapter does not know
+  (or whose session expired) is now replaced by a fresh id instead of being
+  accepted. Applications that relied on adopting any client-supplied id must turn
+  strict mode off.
+- **Subclasses of the bundled adapters:** the adapters now declare public
+  `validateId()` and `updateTimestamp()` methods, and with `session.lazy_write`
+  on (the PHP default) PHP no longer calls `write()` for unchanged session data.
+  A subclass that overrides `read()`/`write()`/`destroy()` (for example to prefix
+  ids) must override both new methods too, otherwise active sessions are no longer
+  renewed. A subclass that already declares a method named `validateId` or
+  `updateTimestamp` with a different signature or a non-public visibility fails
+  with a fatal error and must align it. The same applies to `create_sid()`, which
+  the adapters now declare as a public method.
+
 ## [5.0.0] - 2026-11-22
 
 ### Changed (breaking)

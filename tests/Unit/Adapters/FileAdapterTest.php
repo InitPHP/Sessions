@@ -6,6 +6,8 @@ namespace InitPHP\Sessions\Tests\Unit\Adapters;
 
 use InitPHP\Sessions\Adapters\FileAdapter;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\RequiresFunction;
 use PHPUnit\Framework\TestCase;
 
 final class FileAdapterTest extends TestCase
@@ -89,5 +91,128 @@ final class FileAdapterTest extends TestCase
         self::assertSame(1, $adapter->gc(1000));
         self::assertFileExists($this->dir . '/sess_fresh');
         self::assertFileDoesNotExist($this->dir . '/sess_stale');
+    }
+
+    public function testValidateIdIsFalseForUnknownSessions(): void
+    {
+        self::assertFalse($this->adapter()->validateId('missing'));
+    }
+
+    public function testValidateIdIsTrueForAFreshSession(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('abc', 'data');
+
+        self::assertTrue($adapter->validateId('abc'));
+    }
+
+    public function testValidateIdIsFalseForASessionOlderThanTheLifetime(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('abc', 'data');
+
+        touch($this->dir . '/sess_abc', time() - (int) ini_get('session.gc_maxlifetime') - 10);
+
+        self::assertFalse($adapter->validateId('abc'));
+    }
+
+    public function testUpdateTimestampRenewsAnExistingSessionWithoutChangingItsData(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('abc', 'data');
+        $stale = time() - (int) ini_get('session.gc_maxlifetime') + 60;
+        touch($this->dir . '/sess_abc', $stale);
+        clearstatcache();
+
+        self::assertTrue($adapter->updateTimestamp('abc', 'data'));
+
+        clearstatcache();
+        self::assertGreaterThan($stale, (int) filemtime($this->dir . '/sess_abc'));
+        self::assertSame('data', $adapter->read('abc'));
+    }
+
+    public function testUpdateTimestampNeverCreatesASession(): void
+    {
+        // A session destroyed meanwhile has nothing to renew: no error, no file.
+        self::assertTrue($this->adapter()->updateTimestamp('ghost', 'data'));
+        self::assertFileDoesNotExist($this->dir . '/sess_ghost');
+    }
+
+    #[RequiresFunction('shell_exec')]
+    public function testValidateIdSeesAnMtimeChangedByAnotherProcess(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('abc', 'data');
+        self::assertTrue($adapter->validateId('abc'), 'primes the stat cache with a fresh mtime');
+
+        // Another process (not PHP's touch(), which would clear the cache).
+        shell_exec('touch -t 200001010000 ' . escapeshellarg($this->dir . '/sess_abc'));
+
+        self::assertFalse($adapter->validateId('abc'));
+    }
+
+    public function testASubclassMayDeclareItsOwnHelperWithTheNameOfAnInternalOne(): void
+    {
+        $adapter = new class (['path' => $this->dir]) extends FileAdapter {
+            private function resolveSessionLifetime(): string
+            {
+                return 'unrelated';
+            }
+
+            public function ownHelper(): string
+            {
+                return $this->resolveSessionLifetime();
+            }
+        };
+        $adapter->write('abc', 'data');
+
+        self::assertSame('unrelated', $adapter->ownHelper());
+        self::assertTrue($adapter->validateId('abc'));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unsafeIds(): iterable
+    {
+        yield 'parent directory' => ['../outside'];
+        yield 'nested traversal' => ['a/../../outside'];
+        yield 'absolute path' => ['/etc/passwd'];
+        yield 'backslash' => ['..\\outside'];
+        yield 'dot dot' => ['..'];
+        yield 'nul byte' => ["abc\0"];
+        yield 'empty' => [''];
+        yield 'too long' => [str_repeat('a', 257)];
+    }
+
+    #[DataProvider('unsafeIds')]
+    public function testUnsafeIdsAreTreatedAsNoSessionAndNeverTouchTheFilesystem(string $id): void
+    {
+        $outside = dirname($this->dir) . '/outside';
+        file_put_contents($outside, 'secret');
+
+        try {
+            // An empty prefix makes the id the whole file name, the worst case.
+            $adapter = $this->adapter(['prefix' => '']);
+
+            self::assertFalse($adapter->validateId($id));
+            self::assertTrue($adapter->updateTimestamp($id, 'x'), 'no such session, nothing to renew');
+            self::assertSame('', $adapter->read($id));
+            self::assertFalse($adapter->write($id, 'x'));
+            self::assertTrue($adapter->destroy($id));
+
+            self::assertSame('secret', file_get_contents($outside));
+            self::assertSame([], glob($this->dir . '/*'));
+        } finally {
+            unlink($outside);
+        }
+    }
+
+    public function testIdsWithTheCharactersPhpItselfIssuesAreAccepted(): void
+    {
+        $adapter = $this->adapter();
+
+        self::assertTrue($adapter->write('aZ09,-_', 'data'));
+        self::assertTrue($adapter->validateId('aZ09,-_'));
     }
 }

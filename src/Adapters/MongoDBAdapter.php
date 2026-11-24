@@ -19,13 +19,18 @@ use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionAdapterException;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
 use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
+use InitPHP\Sessions\Internal\GeneratesSessionIds;
+use InitPHP\Sessions\Internal\ResolvesSessionLifetime;
 use MongoDB\Driver\BulkWrite;
 use MongoDB\Driver\Manager;
 use MongoDB\Driver\Query;
+use SessionIdInterface;
+use SessionUpdateTimestampHandlerInterface;
 use Throwable;
 
 use function class_exists;
 use function current;
+use function preg_match;
 use function time;
 
 /**
@@ -38,9 +43,17 @@ use function time;
  *  - `dsn`        (string, required) MongoDB connection string.
  *  - `collection` (string, required) Namespace as `database.collection`.
  *                 The legacy `collation` key is accepted as an alias.
+ *
+ * With `session.use_strict_mode` on, a document counts as an existing session
+ * only while its `timestamp` is younger than `session.gc_maxlifetime`;
+ * {@see updateTimestamp()} renews that timestamp and never creates a document.
+ * A driver error is not taken as proof that the session does not exist.
  */
-class MongoDBAdapter extends AbstractAdapter
+class MongoDBAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
+    use GeneratesSessionIds;
+    use ResolvesSessionLifetime;
+
     private Manager $manager;
 
     private string $collection;
@@ -79,8 +92,48 @@ class MongoDBAdapter extends AbstractAdapter
         }
     }
 
+    public function validateId(string $id): bool
+    {
+        if (!$this->isStorable($id)) {
+            return false;
+        }
+
+        try {
+            $query = new Query([
+                '_id'       => $id,
+                'timestamp' => ['$gte' => time() - $this->resolveSessionLifetime()],
+            ]);
+
+            return $this->manager->executeQuery($this->collection, $query)->toArray() !== [];
+        } catch (Throwable) {
+            // The store failed: do not reject the id (see PDOAdapter).
+            return true;
+        }
+    }
+
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        if (!$this->isStorable($id)) {
+            return true;
+        }
+
+        try {
+            // No upsert: a document that is gone must stay gone.
+            $bulkWrite = new BulkWrite();
+            $bulkWrite->update(['_id' => $id], ['$set' => ['timestamp' => time()]]);
+
+            return $this->manager->executeBulkWrite($this->collection, $bulkWrite)->isAcknowledged();
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
     public function read(string $id): string|false
     {
+        if (!$this->isStorable($id)) {
+            return '';
+        }
+
         try {
             $query = new Query(['_id' => $id]);
             $rows = $this->manager->executeQuery($this->collection, $query)->toArray();
@@ -98,6 +151,10 @@ class MongoDBAdapter extends AbstractAdapter
 
     public function write(string $id, string $data): bool
     {
+        if (!$this->isStorable($id)) {
+            return false;
+        }
+
         try {
             $bulkWrite = new BulkWrite();
             $bulkWrite->update(
@@ -114,6 +171,10 @@ class MongoDBAdapter extends AbstractAdapter
 
     public function destroy(string $id): bool
     {
+        if (!$this->isStorable($id)) {
+            return true;
+        }
+
         try {
             $bulkWrite = new BulkWrite();
             $bulkWrite->delete(['_id' => $id], ['limit' => 1]);
@@ -136,5 +197,15 @@ class MongoDBAdapter extends AbstractAdapter
         } catch (Throwable) {
             return false;
         }
+    }
+
+    /**
+     * Whether the id can be used as a BSON string `_id`. The driver throws on
+     * invalid UTF-8; since that id comes from the client, it must read as "no
+     * such session" instead of failing every request of the user.
+     */
+    private function isStorable(string $id): bool
+    {
+        return preg_match('//u', $id) === 1;
     }
 }

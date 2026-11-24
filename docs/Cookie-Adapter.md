@@ -57,6 +57,39 @@ Session::createImmutable($adapter)->start();
   `samesite=Lax`); set `secure => true` in production (HTTPS) and consider
   `samesite => 'Strict'` for sensitive apps.
 
+## Strict mode and lazy write
+
+The session data travels in the payload cookie, not on the server, so the session
+id is not a lookup key here. With `session.use_strict_mode` on, an id counts as
+known only when it is the id the client sent in its session cookie (or the id
+this session was last read or written under, so closing and re-opening a session
+in one request keeps its id) **and** the
+same request carries a payload cookie that decrypts with your `key`. A first
+visit, a missing, tampered or foreign-key payload cookie, or an id sent without
+its payload therefore gets a fresh id. Ids PHP generates itself
+(`session_create_id()`, `regenerateId()`) are never reported as taken, so they keep
+working. Strict mode needs the id to travel in the session cookie
+(`session.use_only_cookies`); an id passed in a URL or set with `setID()` is
+replaced.
+
+This keeps client-chosen ids out, but it is not an authentication check, and it
+does not enforce a lifetime on the server: the payload carries no timestamp, so
+`ttl` is enforced by the browser's cookie `expires` only. Anyone who holds a
+valid payload cookie can pair it with any id, and a copied payload cookie stays
+valid after `ttl` has passed or after logout until you rotate `key`. Keep the
+cookie secret (`secure`, `httponly`) and still call `regenerateId(true)` after
+login.
+
+When the data did not change, `session.lazy_write` makes PHP call
+`updateTimestamp()`, which sends the payload cookie again with a fresh `ttl`, so
+the cookie's expiry slides with activity just as it does when the data changes.
+`updateTimestamp()` itself never creates a payload cookie when the request carried none.
+
+Because nothing is stored on the server, a parallel logout cannot be honoured: if
+a request that only reads is still running when another request logs the user out
+(deleting the payload cookie), the first response re-sends its payload cookie and
+the user is signed in again.
+
 ## Constraints to keep in mind
 
 - **Size.** Cookies are capped (~4 KB per cookie by browsers). Keep the payload

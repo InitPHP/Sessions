@@ -18,10 +18,14 @@ namespace InitPHP\Sessions\Adapters;
 use InitPHP\Sessions\AbstractAdapter;
 use InitPHP\Sessions\Exceptions\SessionInvalidArgumentException;
 use InitPHP\Sessions\Exceptions\SessionNotSupportedAdapter;
+use InitPHP\Sessions\Internal\GeneratesSessionIds;
+use SessionIdInterface;
+use SessionUpdateTimestampHandlerInterface;
 
 use function base64_decode;
 use function base64_encode;
 use function class_exists;
+use function session_name;
 use function setcookie;
 use function time;
 
@@ -42,15 +46,37 @@ use function time;
  *  - `httponly` (bool)   Hide from JavaScript. Defaults to true.
  *  - `samesite` (string) `Lax`, `Strict` or `None`. Defaults to `Lax`.
  *
+ * The session id is not a lookup key here (the data travels with the
+ * request), so strict mode is answered from the request: {@see validateId()}
+ * accepts an id only when it is the session id the client sent in its session
+ * cookie (or the one this session was last read or written under, so that
+ * re-opening a session within a request keeps its id) *and* the request carries a payload cookie that decrypts with the
+ * configured key. A first visit, a missing, tampered or foreign-key payload
+ * cookie, or an id the client chose without the matching payload therefore gets
+ * a fresh id. Ids PHP generates itself (`session_create_id()`,
+ * `session_regenerate_id()`) are never reported as taken. Strict mode needs the
+ * id to travel in the session cookie (`session.use_only_cookies`).
+ * {@see updateTimestamp()} re-sends the payload cookie so its client-side
+ * expiry slides with `session.lazy_write`. The payload carries no timestamp, so
+ * the lifetime is enforced by the browser only.
+ *
  * @requires initphp/encryption
  */
-class CookieAdapter extends AbstractAdapter
+class CookieAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
 {
+    use GeneratesSessionIds;
+
     private string $name;
 
     private int $ttl;
 
     private string $data;
+
+    /** Whether the request carried a payload cookie that decrypted. */
+    private bool $hasPayload = false;
+
+    /** The id of the session that was last read or written (for re-opening it). */
+    private ?string $currentId = null;
 
     /** @var array<string, mixed> */
     private array $cookieOptions;
@@ -94,11 +120,39 @@ class CookieAdapter extends AbstractAdapter
         $this->decode();
     }
 
+    public function validateId(string $id): bool
+    {
+        if (!isset($this->data)) {
+            $this->decode();
+        }
+
+        // PHP also calls validateId() to check ids it has just generated for
+        // collisions; those never equal the id the client presented.
+        $presented = $_COOKIE[session_name()] ?? null;
+
+        // The id this very session was last read/written under is accepted
+        // too, so closing and re-opening a session in one request keeps its id.
+        return $this->hasPayload
+            && ((\is_string($presented) && $presented === $id) || $id === $this->currentId);
+    }
+
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        // Without a payload cookie there is no session to renew; do not
+        // create one (an unchanged empty session must not set a cookie).
+        if (!$this->hasPayload) {
+            return true;
+        }
+
+        return $this->write($id, $data);
+    }
+
     public function read(string $id): string|false
     {
         if (!isset($this->data)) {
             $this->decode();
         }
+        $this->currentId = $id;
 
         return $this->data;
     }
@@ -106,6 +160,8 @@ class CookieAdapter extends AbstractAdapter
     public function write(string $id, string $data): bool
     {
         $this->data = $data;
+        $this->hasPayload = true;
+        $this->currentId = $id;
         $value = base64_encode($this->encrypt->encrypt($data));
 
         return setcookie($this->name, $value, [
@@ -116,6 +172,8 @@ class CookieAdapter extends AbstractAdapter
     public function destroy(string $id): bool
     {
         $this->data = '';
+        $this->hasPayload = false;
+        $this->currentId = null;
 
         return setcookie($this->name, '', [
             'expires' => time() - 86400,
@@ -125,6 +183,7 @@ class CookieAdapter extends AbstractAdapter
     private function decode(): void
     {
         $this->data = '';
+        $this->hasPayload = false;
 
         if (!isset($_COOKIE[$this->name])) {
             return;
@@ -144,6 +203,7 @@ class CookieAdapter extends AbstractAdapter
 
         if (\is_string($data)) {
             $this->data = $data;
+            $this->hasPayload = true;
         }
     }
 }

@@ -83,6 +83,19 @@ $adapter = new PDOAdapter([
 > mobile clients change IP often. Enable this only when your network topology
 > makes it reliable.
 
+## Strict mode and lazy write
+
+With `session.use_strict_mode` on, a session id counts as known only when a row
+with that `id` exists and its `sess_timestamp` is less than
+`session.gc_maxlifetime` seconds old (and, with `withIPAddress`, the IP matches);
+otherwise the id is replaced by a fresh one. When the data did not change,
+`session.lazy_write` makes PHP call `updateTimestamp()`, which runs
+`UPDATE ... SET sess_timestamp = ...` on the existing row (it never inserts one,
+so a session destroyed meanwhile is not brought back) instead of rewriting the
+payload. If the database itself fails, the id is not rejected (that would replace
+the user's session id over an outage); `read()` fails and the session does not
+start.
+
 ## Garbage collection
 
 `gc()` deletes rows whose `sess_timestamp` is older than `gc_maxlifetime` and

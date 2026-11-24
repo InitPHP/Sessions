@@ -22,6 +22,88 @@ that does not exist yet, return an **empty string `''`**. Returning `false`
 signals a genuine read failure; returning a serialized empty array (`a:0:{}`)
 corrupts the session.
 
+## Strict mode and lazy write
+
+`AbstractAdapter` implements only PHP's `SessionHandlerInterface`, exactly as
+before: a custom adapter that extends it keeps working unchanged, but PHP then
+accepts any session id a client sends, even with `session.use_strict_mode` on, and
+calls `write()` on every request even with `session.lazy_write` on.
+
+To opt in, implement PHP's `SessionUpdateTimestampHandlerInterface` yourself (and
+`SessionIdInterface`, see below):
+
+```php
+use InitPHP\Sessions\AbstractAdapter;
+
+final class ArrayAdapter extends AbstractAdapter implements SessionIdInterface, SessionUpdateTimestampHandlerInterface
+{
+    // read(), write(), destroy() as below ...
+
+    public function create_sid(): string
+    {
+        return bin2hex(random_bytes(16)); // 32 hex characters, like PHP's default
+    }
+
+    public function validateId(string $id): bool
+    {
+        return isset($this->store[$id]); // an expired record must count as missing
+    }
+
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        return true; // renew the lifetime here; see the rules below
+    }
+}
+```
+
+- **`create_sid()`** creates the id for a new session and for `regenerateId()`.
+  PHP 8.6 warns (and PHP 9.0 will refuse) when a session handler does not provide
+  it. Return a random id of the shape PHP produces (`session.sid_length`
+  characters, 32 hexadecimal characters by default) from a cryptographically secure
+  source such as `random_bytes()`. PHP collision-checks an id from
+  `session_create_id()` (and from `regenerateId()` under strict mode) with
+  `validateId()`, but **not** the id of a brand-new session, so the randomness you
+  return is the only protection against guessing; PHP adds any
+  `session_create_id()` prefix itself. Every adapter
+  that extends the unchanged `AbstractAdapter` gets PHP 8.6's warning once for
+  `AbstractAdapter` itself; implementing the interfaces above removes the warning
+  for your own class.
+- **`validateId($id)`** is called by PHP with the id the client sent when
+  `session.use_strict_mode` is on, and when PHP checks an id it has just generated
+  (`session_create_id()`, `session_regenerate_id()`) for a collision. Return `true`
+  only when a live session with exactly that id is stored. Treat an **expired**
+  record as missing. If the store itself fails (connection lost), do not return
+  `false`: that would replace the user's id over a transient outage; return `true`
+  and let `read()` fail.
+- **`updateTimestamp($id, $data)`** is called instead of `write()` when
+  `session.lazy_write` is on (the default) and the data did not change. Renew the
+  lifetime your store tracks, **never create the record**: if the session is gone
+  (a parallel request logged out or regenerated the id) it must stay gone, so
+  return `true` without writing. Do not simply call `write()` here.
+- **Locking.** PHP calls `validateId()` and then `read()` for the same id without
+  `close()` in between. If your `read()` takes a lock that it releases only in
+  `close()`/`write()`, `validateId()` must not call `read()` and must not take the
+  lock again, or the request will block on its own lock. Use a lock-free
+  existence check.
+- **The id is untrusted input** (`setID()`, a custom cookie and a hostile client
+  can all supply anything, and PHP does not restrict what `session_id()` accepts).
+  Validate it before using it as a file name, a key with structure or part of a
+  query.
+
+Adapters that extend one of the *bundled* adapters inherit these methods; see
+[Extending a bundled adapter](#extending-a-bundled-adapter).
+
+## Extending a bundled adapter
+
+The bundled adapters implement `SessionUpdateTimestampHandlerInterface` with
+public `validateId()`, `updateTimestamp()` and `create_sid()` methods, and with
+`session.lazy_write` on PHP no longer calls `write()` for unchanged data. If your
+subclass overrides `read()`/`write()`/`destroy()` (for example to prefix or
+encrypt ids or payloads), override **both** new methods as well, or active
+sessions stop being renewed and ids are looked up under the wrong key. A subclass
+must not declare its own `validateId`, `updateTimestamp` or `create_sid` with a
+different signature or a non-public visibility.
+
 ## A worked example — in-memory adapter
 
 Great for tests, demos, and understanding the contract:
