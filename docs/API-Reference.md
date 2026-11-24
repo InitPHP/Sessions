@@ -71,7 +71,7 @@ Exception-aware wrapper over PHP's session lifecycle functions.
 | `getName()` | `string` | Current session name (`''` if none). |
 | `setName(string $name)` | `Manager` | Set the session name (before start). |
 | `getID()` | `string` | Current id (`''` if none). |
-| `setID(string $sessionId)` | `bool` | Set the id (before start); true if accepted. |
+| `setID(string $sessionId)` | `bool` | Set the id (before start). Do not rely on the return value; read `getID()` — see [Session Lifecycle](Session-Lifecycle.md#getid-string-and-setidstring-id-bool). |
 | `regenerateId(bool $deleteOldSession = false)` | `bool` | New id, optionally deleting the old record. |
 | `flush()` | `bool` | Clear all values. Requires an active session. |
 | `unset()` | `bool` | Clear all values. Requires an active session. |

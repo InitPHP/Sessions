@@ -39,7 +39,9 @@ if (!Session::isStarted()) {
     Session::createImmutable($adapter)->start([
         'cookie_httponly' => true,
         'cookie_samesite' => 'Lax',
-        'cookie_secure'   => !empty($_SERVER['HTTPS']),
+        // Always Secure; $_SERVER['HTTPS'] is empty behind a TLS-terminating proxy.
+        // Turn it off only for local development, through your config.
+        'cookie_secure'   => true,
     ]);
 }
 ```
