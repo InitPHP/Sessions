@@ -28,6 +28,7 @@ use Throwable;
 
 use function class_exists;
 use function current;
+use function preg_match;
 use function time;
 
 /**
@@ -90,6 +91,10 @@ class MongoDBAdapter extends AbstractAdapter implements SessionUpdateTimestampHa
 
     public function validateId(string $id): bool
     {
+        if (!$this->isStorable($id)) {
+            return false;
+        }
+
         try {
             $query = new Query([
                 '_id'       => $id,
@@ -105,6 +110,10 @@ class MongoDBAdapter extends AbstractAdapter implements SessionUpdateTimestampHa
 
     public function updateTimestamp(string $id, string $data): bool
     {
+        if (!$this->isStorable($id)) {
+            return true;
+        }
+
         try {
             // No upsert: a document that is gone must stay gone.
             $bulkWrite = new BulkWrite();
@@ -118,6 +127,10 @@ class MongoDBAdapter extends AbstractAdapter implements SessionUpdateTimestampHa
 
     public function read(string $id): string|false
     {
+        if (!$this->isStorable($id)) {
+            return '';
+        }
+
         try {
             $query = new Query(['_id' => $id]);
             $rows = $this->manager->executeQuery($this->collection, $query)->toArray();
@@ -135,6 +148,10 @@ class MongoDBAdapter extends AbstractAdapter implements SessionUpdateTimestampHa
 
     public function write(string $id, string $data): bool
     {
+        if (!$this->isStorable($id)) {
+            return false;
+        }
+
         try {
             $bulkWrite = new BulkWrite();
             $bulkWrite->update(
@@ -151,6 +168,10 @@ class MongoDBAdapter extends AbstractAdapter implements SessionUpdateTimestampHa
 
     public function destroy(string $id): bool
     {
+        if (!$this->isStorable($id)) {
+            return true;
+        }
+
         try {
             $bulkWrite = new BulkWrite();
             $bulkWrite->delete(['_id' => $id], ['limit' => 1]);
@@ -173,5 +194,15 @@ class MongoDBAdapter extends AbstractAdapter implements SessionUpdateTimestampHa
         } catch (Throwable) {
             return false;
         }
+    }
+
+    /**
+     * Whether the id can be used as a BSON string `_id`. The driver throws on
+     * invalid UTF-8; since that id comes from the client, it must read as "no
+     * such session" instead of failing every request of the user.
+     */
+    private function isStorable(string $id): bool
+    {
+        return preg_match('//u', $id) === 1;
     }
 }

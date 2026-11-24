@@ -17,9 +17,13 @@ final class FakeMongoManager
     /** When true, every command throws, like a lost connection. */
     public bool $failing = false;
 
+    /** How many commands (queries and bulk writes) reached the store. */
+    public int $commands = 0;
+
     public function executeQuery(string $namespace, FakeMongoQuery $query): FakeMongoCursor
     {
         $this->failIfDown();
+        ++$this->commands;
 
         $rows = [];
         foreach ($this->documents as $document) {
@@ -34,6 +38,7 @@ final class FakeMongoManager
     public function executeBulkWrite(string $namespace, FakeMongoBulkWrite $bulk): FakeMongoWriteResult
     {
         $this->failIfDown();
+        ++$this->commands;
 
         $matched = 0;
         $deleted = 0;

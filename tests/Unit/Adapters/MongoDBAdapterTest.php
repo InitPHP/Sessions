@@ -4,102 +4,85 @@ declare(strict_types=1);
 
 namespace InitPHP\Sessions\Tests\Unit\Adapters;
 
-use InitPHP\Sessions\Adapters\MongoDBAdapter;
-use InitPHP\Sessions\Tests\Support\ExtensionDouble;
-use InitPHP\Sessions\Tests\Support\FakeMongoBulkWrite;
-use InitPHP\Sessions\Tests\Support\FakeMongoManager;
-use InitPHP\Sessions\Tests\Support\FakeMongoQuery;
-use PHPUnit\Framework\Attributes\PreserveGlobalState;
-use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
+use InitPHP\Sessions\Tests\Support\WorkerRunner;
 use PHPUnit\Framework\TestCase;
-use ReflectionClass;
 
 /**
- * Runs against an in-memory fake of the MongoDB driver classes (see
- * {@see ExtensionDouble}); this has not been exercised against a live MongoDB
- * server. The constructor, which insists on the real extension, is bypassed.
+ * MongoDBAdapter against in-memory fakes of the MongoDB driver classes, run in
+ * a `php -n` child process (see {@see WorkerRunner}) so it executes on every
+ * machine, including those with ext-mongodb. The constructor, which insists on
+ * the real extension, is bypassed. Not exercised against a live server.
  */
-#[RunTestsInSeparateProcesses]
-#[PreserveGlobalState(false)]
 final class MongoDBAdapterTest extends TestCase
 {
-    private FakeMongoManager $manager;
-
-    protected function setUp(): void
+    /**
+     * @return array<string, mixed>
+     */
+    private function observed(): array
     {
-        ExtensionDouble::install($this, 'mongodb', 'MongoDB\\Driver\\Manager', FakeMongoManager::class);
-        ExtensionDouble::install($this, 'mongodb', 'MongoDB\\Driver\\Query', FakeMongoQuery::class);
-        ExtensionDouble::install($this, 'mongodb', 'MongoDB\\Driver\\BulkWrite', FakeMongoBulkWrite::class);
-
-        $this->manager = new FakeMongoManager();
+        return WorkerRunner::observe('mongodb');
     }
 
-    private function adapter(): MongoDBAdapter
+    public function testTheScenariosRanAgainstTheFakeNotTheRealExtension(): void
     {
-        $reflection = new ReflectionClass(MongoDBAdapter::class);
-        $adapter = $reflection->newInstanceWithoutConstructor();
-        $reflection->getProperty('manager')->setValue($adapter, $this->manager);
-        $reflection->getProperty('collection')->setValue($adapter, 'app.sessions');
-
-        return $adapter;
+        self::assertFalse($this->observed()['real_extension_loaded']);
     }
 
     public function testValidateIdIsFalseForUnknownSessions(): void
     {
-        self::assertFalse($this->adapter()->validateId('missing'));
+        self::assertFalse($this->observed()['validate_unknown']);
     }
 
     public function testValidateIdIsTrueOnceTheSessionIsWritten(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-
-        self::assertTrue($adapter->validateId('sid'));
+        self::assertTrue($this->observed()['validate_after_write']);
     }
 
     public function testValidateIdIgnoresDocumentsOlderThanTheSessionLifetime(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-        $this->manager->documents['sid']['timestamp'] = time() - (int) ini_get('session.gc_maxlifetime') - 10;
+        $o = $this->observed();
 
-        self::assertFalse($adapter->validateId('sid'));
+        self::assertSame(1440, $o['lifetime']);
+        self::assertFalse($o['validate_after_expiry']);
     }
 
     public function testUpdateTimestampRenewsTheTimestampAndKeepsTheData(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-        $stale = time() - (int) ini_get('session.gc_maxlifetime') + 60;
-        $this->manager->documents['sid']['timestamp'] = $stale;
+        $o = $this->observed();
 
-        self::assertTrue($adapter->updateTimestamp('sid', 'a|i:1;'));
-
-        self::assertGreaterThan($stale, $this->manager->documents['sid']['timestamp']);
-        self::assertSame('a|i:1;', $adapter->read('sid'));
+        self::assertTrue($o['renewal_result']);
+        self::assertTrue($o['timestamp_renewed']);
+        self::assertSame('a|i:1;', $o['read_after_renewal']);
     }
 
     public function testUpdateTimestampDoesNotResurrectADestroyedSession(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'u|s:5:"admin";');
-        $adapter->destroy('sid');
+        $o = $this->observed();
 
-        self::assertTrue($adapter->updateTimestamp('sid', 'u|s:5:"admin";'));
-
-        self::assertFalse($adapter->validateId('sid'));
-        self::assertSame('', $adapter->read('sid'));
-        self::assertSame([], $this->manager->documents);
+        self::assertTrue($o['destroyed_update_result']);
+        self::assertFalse($o['destroyed_validate']);
+        self::assertSame('', $o['destroyed_read']);
+        self::assertSame(0, $o['destroyed_documents']);
     }
 
     public function testAStoreFailureDoesNotRejectTheId(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-        $this->manager->failing = true;
+        $o = $this->observed();
 
-        self::assertTrue($adapter->validateId('sid'));
-        self::assertFalse($adapter->read('sid'));
-        self::assertFalse($adapter->updateTimestamp('sid', 'a|i:1;'));
+        self::assertTrue($o['failure_validate']);
+        self::assertFalse($o['failure_read']);
+        self::assertFalse($o['failure_update']);
+    }
+
+    public function testAnIdThatIsNotValidUtf8IsNoSuchSessionAndNeverReachesTheDriver(): void
+    {
+        $o = $this->observed();
+
+        self::assertFalse($o['bad_id_validate']);
+        self::assertSame('', $o['bad_id_read']);
+        self::assertTrue($o['bad_id_update']);
+        self::assertFalse($o['bad_id_write']);
+        self::assertTrue($o['bad_id_destroy']);
+        self::assertSame(0, $o['bad_id_commands']);
     }
 }

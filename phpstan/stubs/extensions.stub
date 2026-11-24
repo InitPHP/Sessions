@@ -59,6 +59,7 @@ namespace {
     {
         public const OPT_BINARY_PROTOCOL = 18;
         public const RES_NOTFOUND = 16;
+        public const RES_BAD_KEY_PROVIDED = 33;
         public const RES_SUCCESS = 0;
 
         public function addServer(string $host, int $port, int $weight = 0): bool {}

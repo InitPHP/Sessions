@@ -70,6 +70,9 @@ class CookieAdapter extends AbstractAdapter implements SessionUpdateTimestampHan
     /** Whether the request carried a payload cookie that decrypted. */
     private bool $hasPayload = false;
 
+    /** The id of the session that was last read or written (for re-opening it). */
+    private ?string $currentId = null;
+
     /** @var array<string, mixed> */
     private array $cookieOptions;
 
@@ -122,7 +125,10 @@ class CookieAdapter extends AbstractAdapter implements SessionUpdateTimestampHan
         // collisions; those never equal the id the client presented.
         $presented = $_COOKIE[session_name()] ?? null;
 
-        return $this->hasPayload && \is_string($presented) && $presented === $id;
+        // The id this very session was last read/written under is accepted
+        // too, so closing and re-opening a session in one request keeps its id.
+        return $this->hasPayload
+            && ((\is_string($presented) && $presented === $id) || $id === $this->currentId);
     }
 
     public function updateTimestamp(string $id, string $data): bool
@@ -141,6 +147,7 @@ class CookieAdapter extends AbstractAdapter implements SessionUpdateTimestampHan
         if (!isset($this->data)) {
             $this->decode();
         }
+        $this->currentId = $id;
 
         return $this->data;
     }
@@ -149,6 +156,7 @@ class CookieAdapter extends AbstractAdapter implements SessionUpdateTimestampHan
     {
         $this->data = $data;
         $this->hasPayload = true;
+        $this->currentId = $id;
         $value = base64_encode($this->encrypt->encrypt($data));
 
         return setcookie($this->name, $value, [
@@ -160,6 +168,7 @@ class CookieAdapter extends AbstractAdapter implements SessionUpdateTimestampHan
     {
         $this->data = '';
         $this->hasPayload = false;
+        $this->currentId = null;
 
         return setcookie($this->name, '', [
             'expires' => time() - 86400,

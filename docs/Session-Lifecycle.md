@@ -90,8 +90,9 @@ things:
 - **Lazy write.** When a request does not change the session data, PHP skips
   `write()` and calls `updateTimestamp()` instead, which renews the session's
   lifetime (file modification time, row/document timestamp, key TTL, cookie
-  expiry) without rewriting the payload. It only renews: a session that was
-  destroyed or regenerated in the meantime is not brought back.
+  expiry) without rewriting the payload. On the server-side stores it only renews: a
+  session that was destroyed or regenerated in the meantime is not brought back
+  (the cookie adapter has no server-side record and cannot honour that).
   `session.lazy_write` is on by default.
 
 How "exists" is decided depends on the store: see the *Strict mode and lazy

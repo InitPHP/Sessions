@@ -4,116 +4,80 @@ declare(strict_types=1);
 
 namespace InitPHP\Sessions\Tests\Unit\Adapters;
 
-use InitPHP\Sessions\Adapters\RedisAdapter;
-use InitPHP\Sessions\Tests\Support\ExtensionDouble;
-use InitPHP\Sessions\Tests\Support\FakeRedis;
-use PHPUnit\Framework\Attributes\PreserveGlobalState;
-use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
+use InitPHP\Sessions\Tests\Support\WorkerRunner;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Runs against an in-memory fake of `\Redis` (see {@see ExtensionDouble});
- * this has not been exercised against a live Redis server.
+ * RedisAdapter against an in-memory fake of `\Redis`. The scenarios run in a
+ * `php -n` child process (see {@see WorkerRunner}) so they execute on every
+ * machine, including those with ext-redis. Not exercised against a live server.
  */
-#[RunTestsInSeparateProcesses]
-#[PreserveGlobalState(false)]
 final class RedisAdapterTest extends TestCase
 {
-    private FakeRedis $redis;
-
-    protected function setUp(): void
+    /**
+     * @return array<string, mixed>
+     */
+    private function observed(): array
     {
-        ExtensionDouble::install($this, 'redis', 'Redis', FakeRedis::class);
-        $this->redis = new FakeRedis();
+        return WorkerRunner::observe('redis');
     }
 
-    /**
-     * @param array<string, mixed> $options
-     */
-    private function adapter(array $options = []): RedisAdapter
+    public function testTheScenariosRanAgainstTheFakeNotTheRealExtension(): void
     {
-        return new RedisAdapter($options + ['redis' => $this->redis, 'prefix' => 'p:', 'ttl' => 100]);
+        self::assertFalse($this->observed()['real_extension_loaded']);
     }
 
     public function testValidateIdIsFalseForUnknownSessions(): void
     {
-        self::assertFalse($this->adapter()->validateId('missing'));
+        self::assertFalse($this->observed()['validate_unknown']);
     }
 
     public function testValidateIdIsTrueOnceTheSessionIsWritten(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-
-        self::assertTrue($adapter->validateId('sid'));
+        self::assertTrue($this->observed()['validate_after_write']);
     }
 
-    public function testValidateIdIsFalseAfterTheKeyExpired(): void
+    public function testValidateIdIsFalseAfterTheKeyExpiredOrWasDestroyed(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-
-        $this->redis->advance(100);
-
-        self::assertFalse($adapter->validateId('sid'));
-    }
-
-    public function testValidateIdIsFalseAfterDestroy(): void
-    {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-        $adapter->destroy('sid');
-
-        self::assertFalse($adapter->validateId('sid'));
+        self::assertFalse($this->observed()['validate_after_expiry']);
+        self::assertFalse($this->observed()['validate_after_destroy']);
     }
 
     public function testUpdateTimestampRenewsTheTtlWithoutRewritingTheData(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-        $this->redis->advance(60);
-        self::assertSame(40, $this->redis->ttlOf('p:sid'));
+        $o = $this->observed();
 
-        self::assertTrue($adapter->updateTimestamp('sid', 'a|i:1;'));
-
-        self::assertSame(100, $this->redis->ttlOf('p:sid'));
-        $this->redis->advance(60);
-        self::assertTrue($adapter->validateId('sid'), 'the renewed session must outlive its original expiry');
-        self::assertSame('a|i:1;', $adapter->read('sid'));
+        self::assertSame(40, $o['ttl_before_renewal']);
+        self::assertTrue($o['renewal_result']);
+        self::assertSame(100, $o['ttl_after_renewal']);
+        self::assertTrue($o['validate_after_renewal'], 'the renewed session must outlive its original expiry');
+        self::assertSame('a|i:1;', $o['read_after_renewal']);
     }
 
     public function testUpdateTimestampDoesNotResurrectADestroyedSession(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'u|s:5:"admin";');
-        // A parallel request logs out (or regenerates the id) while this one runs.
-        $adapter->destroy('sid');
+        $o = $this->observed();
 
-        self::assertTrue($adapter->updateTimestamp('sid', 'u|s:5:"admin";'));
-
-        self::assertFalse($adapter->validateId('sid'));
-        self::assertSame('', $adapter->read('sid'));
+        self::assertTrue($o['destroyed_update_result']);
+        self::assertFalse($o['destroyed_validate']);
+        self::assertSame('', $o['destroyed_read']);
     }
 
     public function testAStoreFailureDoesNotRejectTheId(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-        $this->redis->failing = true;
+        $o = $this->observed();
 
-        self::assertTrue($adapter->validateId('sid'));
-        self::assertFalse($adapter->read('sid'));
-        self::assertFalse($adapter->updateTimestamp('sid', 'a|i:1;'));
+        self::assertTrue($o['failure_validate']);
+        self::assertFalse($o['failure_read']);
+        self::assertFalse($o['failure_update']);
     }
 
-    public function testUpdateTimestampKeepsAKeyThatHasNoExpiry(): void
+    public function testAKeyWithoutExpiryIsKeptAsIs(): void
     {
-        $adapter = $this->adapter(['ttl' => 0]);
-        $adapter->write('sid', 'a|i:1;');
+        $o = $this->observed();
 
-        self::assertTrue($adapter->updateTimestamp('sid', 'a|i:1;'));
-
-        self::assertNull($this->redis->ttlOf('p:sid'));
-        self::assertTrue($adapter->validateId('sid'));
+        self::assertTrue($o['no_expiry_update_result']);
+        self::assertNull($o['no_expiry_ttl']);
+        self::assertTrue($o['no_expiry_validate']);
     }
 }

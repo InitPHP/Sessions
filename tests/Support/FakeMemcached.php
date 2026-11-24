@@ -14,6 +14,7 @@ final class FakeMemcached
     public const RES_SUCCESS = 0;
     public const RES_NOTFOUND = 16;
     public const RES_FAILURE = 1;
+    public const RES_BAD_KEY_PROVIDED = 33;
 
     public int $clock = 0;
 
@@ -65,6 +66,12 @@ final class FakeMemcached
 
     public function get(string $key): mixed
     {
+        if ($this->isBadKey($key)) {
+            $this->resultCode = self::RES_BAD_KEY_PROVIDED;
+
+            return false;
+        }
+
         if ($this->failing) {
             $this->resultCode = self::RES_FAILURE;
 
@@ -91,6 +98,12 @@ final class FakeMemcached
 
     public function touch(string $key, int $expiration = 0): bool
     {
+        if ($this->isBadKey($key)) {
+            $this->resultCode = self::RES_BAD_KEY_PROVIDED;
+
+            return false;
+        }
+
         if ($this->failing) {
             $this->resultCode = self::RES_FAILURE;
 
@@ -118,5 +131,11 @@ final class FakeMemcached
     public function quit(): bool
     {
         return true;
+    }
+
+    /** php-memcached refuses keys that are empty, longer than 250 bytes or contain a space. */
+    private function isBadKey(string $key): bool
+    {
+        return $key === '' || strlen($key) > 250 || str_contains($key, ' ');
     }
 }

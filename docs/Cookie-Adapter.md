@@ -83,6 +83,11 @@ When the data did not change, `session.lazy_write` makes PHP call
 the cookie's expiry slides with activity just as it does when the data changes.
 `updateTimestamp()` itself never creates a payload cookie when the request carried none.
 
+Because nothing is stored on the server, a parallel logout cannot be honoured: if
+a request that only reads is still running when another request logs the user out
+(deleting the payload cookie), the first response re-sends its payload cookie and
+the user is signed in again.
+
 ## Constraints to keep in mind
 
 - **Size.** Cookies are capped (~4 KB per cookie by browsers). Keep the payload

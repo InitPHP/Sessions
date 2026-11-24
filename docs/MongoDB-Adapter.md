@@ -67,6 +67,8 @@ When the data did not change, `session.lazy_write` makes PHP call
 `updateTimestamp()`, which sets `timestamp` to now on the existing document
 instead of rewriting the payload; it never creates a document, so a session
 destroyed meanwhile is not brought back. A driver error does not reject the id.
+An id that is not valid UTF-8 cannot be a MongoDB string `_id`; it is treated as a
+session that does not exist and never reaches the driver.
 
 ## Behaviour notes
 

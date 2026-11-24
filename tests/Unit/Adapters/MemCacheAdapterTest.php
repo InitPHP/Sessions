@@ -4,102 +4,79 @@ declare(strict_types=1);
 
 namespace InitPHP\Sessions\Tests\Unit\Adapters;
 
-use InitPHP\Sessions\Adapters\MemCacheAdapter;
-use InitPHP\Sessions\Tests\Support\ExtensionDouble;
-use InitPHP\Sessions\Tests\Support\FakeMemcached;
-use PHPUnit\Framework\Attributes\PreserveGlobalState;
-use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
+use InitPHP\Sessions\Tests\Support\WorkerRunner;
 use PHPUnit\Framework\TestCase;
-use ReflectionProperty;
 
 /**
- * Runs against an in-memory fake of `\Memcached` (see {@see ExtensionDouble});
- * this has not been exercised against a live Memcached server, and the legacy
- * `Memcache` driver path is not covered.
+ * MemCacheAdapter (Memcached driver) against an in-memory fake of `\Memcached`,
+ * run in a `php -n` child process (see {@see WorkerRunner}) so it executes on
+ * every machine, including those with ext-memcached. Not exercised against a
+ * live server.
  */
-#[RunTestsInSeparateProcesses]
-#[PreserveGlobalState(false)]
 final class MemCacheAdapterTest extends TestCase
 {
-    protected function setUp(): void
-    {
-        ExtensionDouble::install($this, 'memcached', 'Memcached', FakeMemcached::class);
-    }
-
-    private function adapter(): MemCacheAdapter
-    {
-        return new MemCacheAdapter(['prefix' => 'p:', 'ttl' => 100]);
-    }
-
     /**
-     * The client the adapter created lazily on its first operation.
+     * @return array<string, mixed>
      */
-    private function client(MemCacheAdapter $adapter): FakeMemcached
+    private function observed(): array
     {
-        $client = (new ReflectionProperty($adapter, 'memcache'))->getValue($adapter);
-        self::assertInstanceOf(FakeMemcached::class, $client);
+        return WorkerRunner::observe('memcached');
+    }
 
-        return $client;
+    public function testTheScenariosRanAgainstTheFakeNotTheRealExtension(): void
+    {
+        self::assertFalse($this->observed()['real_extension_loaded']);
     }
 
     public function testValidateIdIsFalseForUnknownSessions(): void
     {
-        self::assertFalse($this->adapter()->validateId('missing'));
+        self::assertFalse($this->observed()['validate_unknown']);
     }
 
     public function testValidateIdIsTrueOnceTheSessionIsWritten(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-
-        self::assertTrue($adapter->validateId('sid'));
+        self::assertTrue($this->observed()['validate_after_write']);
     }
 
     public function testValidateIdIsFalseAfterTheItemExpired(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-
-        $this->client($adapter)->advance(100);
-
-        self::assertFalse($adapter->validateId('sid'));
+        self::assertFalse($this->observed()['validate_after_expiry']);
     }
 
     public function testUpdateTimestampRenewsTheExpiry(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-        $client = $this->client($adapter);
+        $o = $this->observed();
 
-        $client->advance(60);
-        self::assertTrue($adapter->updateTimestamp('sid', 'a|i:1;'));
-        $client->advance(60);
-
-        self::assertTrue($adapter->validateId('sid'), 'the renewed session must outlive its original expiry');
-        self::assertSame('a|i:1;', $adapter->read('sid'));
+        self::assertTrue($o['renewal_result']);
+        self::assertTrue($o['validate_after_renewal'], 'the renewed session must outlive its original expiry');
+        self::assertSame('a|i:1;', $o['read_after_renewal']);
     }
 
     public function testUpdateTimestampDoesNotResurrectADestroyedSession(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'u|s:5:"admin";');
-        $adapter->destroy('sid');
+        $o = $this->observed();
 
-        self::assertTrue($adapter->updateTimestamp('sid', 'u|s:5:"admin";'));
-
-        self::assertFalse($adapter->validateId('sid'));
-        self::assertSame('', $adapter->read('sid'));
+        self::assertTrue($o['destroyed_update_result']);
+        self::assertFalse($o['destroyed_validate']);
+        self::assertSame('', $o['destroyed_read']);
     }
 
     public function testOnlyNotFoundCountsAsNoSuchSession(): void
     {
-        $adapter = $this->adapter();
-        $adapter->write('sid', 'a|i:1;');
-        $this->client($adapter)->failing = true;
+        $o = $this->observed();
 
         // A server error must neither reject the id nor read as an empty session.
-        self::assertTrue($adapter->validateId('sid'));
-        self::assertFalse($adapter->read('sid'));
-        self::assertFalse($adapter->updateTimestamp('sid', 'a|i:1;'));
+        self::assertTrue($o['failure_validate']);
+        self::assertFalse($o['failure_read']);
+        self::assertFalse($o['failure_update']);
+    }
+
+    public function testAKeyMemcachedRefusesIsNoSuchSessionNotAStoreFailure(): void
+    {
+        $o = $this->observed();
+
+        self::assertFalse($o['bad_key_validate']);
+        self::assertSame('', $o['bad_key_read']);
+        self::assertTrue($o['bad_key_update']);
     }
 }

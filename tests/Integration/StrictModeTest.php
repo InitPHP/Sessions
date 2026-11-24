@@ -507,4 +507,47 @@ final class StrictModeTest extends TestCase
         self::assertSame($regenerated, $next);
         self::assertSame('admin', $seen);
     }
+
+    #[RequiresPhpExtension('openssl')]
+    public function testCookieAdapterKeepsTheIdWhenTheSessionIsReopenedInTheSameRequest(): void
+    {
+        $this->requireEncryption();
+        $adapter = $this->cookieAdapter();
+
+        $first = $this->request($adapter, null, static function (): void {
+            Session::set('user', 'admin');
+        });
+
+        // Same request, session closed and opened again: PHP reuses the id.
+        $seen = null;
+        $second = $this->request($adapter, null, static function () use (&$seen): void {
+            $seen = Session::get('user');
+        });
+
+        self::assertSame($first, $second);
+        self::assertSame('admin', $seen);
+    }
+
+    #[RequiresPhpExtension('openssl')]
+    public function testCookieAdapterKeepsTheRegeneratedIdWhenTheSessionIsReopened(): void
+    {
+        $this->requireEncryption();
+        $_COOKIE['payload'] = $this->payloadCookie('user|s:5:"admin";');
+        $adapter = $this->cookieAdapter();
+
+        $regenerated = '';
+        $this->request($adapter, 'issuedbytheserver0123456789abcdef', static function () use (&$regenerated): void {
+            Session::regenerateId(true);
+            $regenerated = Session::getID();
+        });
+
+        $seen = null;
+        $reopened = $this->request($adapter, null, static function () use (&$seen): void {
+            $seen = Session::get('user');
+        });
+
+        self::assertNotSame('', $regenerated);
+        self::assertSame($regenerated, $reopened);
+        self::assertSame('admin', $seen);
+    }
 }

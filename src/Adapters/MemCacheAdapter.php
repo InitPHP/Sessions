@@ -45,8 +45,9 @@ use const CASE_LOWER;
  *
  * The server drops expired items itself, so an item that exists is a live
  * session ({@see validateId()}); {@see updateTimestamp()} renews its expiry and
- * never creates an item. Only a "not found" answer counts as "no such session":
- * a server error neither rejects the id nor reads as an empty session. (The
+ * never creates an item. Only a "not found" answer (or a key too long or
+ * malformed to be sent) counts as "no such session": a server error neither
+ * rejects the id nor reads as an empty session. (The
  * legacy Memcache driver cannot tell the two apart; there a failed `get()` is
  * treated as "not found".)
  */
@@ -113,9 +114,10 @@ class MemCacheAdapter extends AbstractAdapter implements SessionUpdateTimestampH
 
             $client->get($key);
 
-            // Only an explicit "not found" means the session does not exist;
-            // any other failure must not replace the user's session id.
-            return $client->getResultCode() !== Memcached::RES_NOTFOUND;
+            // Only "not found" (or a key the client refuses to send, which can
+            // never hold a session) means the session does not exist; any
+            // other failure must not replace the user's session id.
+            return !$this->isMissing($client->getResultCode());
         } catch (Throwable) {
             return true;
         }
@@ -136,7 +138,7 @@ class MemCacheAdapter extends AbstractAdapter implements SessionUpdateTimestampH
                 return $client->replace($key, $data, 0, $ttl) !== false || $client->get($key) === false;
             }
 
-            return $client->touch($key, $ttl) || $client->getResultCode() === Memcached::RES_NOTFOUND;
+            return $client->touch($key, $ttl) || $this->isMissing($client->getResultCode());
         } catch (Throwable) {
             return false;
         }
@@ -156,7 +158,7 @@ class MemCacheAdapter extends AbstractAdapter implements SessionUpdateTimestampH
 
             $data = $client->get($key);
             $code = $client->getResultCode();
-            if ($code === Memcached::RES_NOTFOUND) {
+            if ($this->isMissing($code)) {
                 return '';
             }
             if ($code !== Memcached::RES_SUCCESS) {
@@ -196,6 +198,17 @@ class MemCacheAdapter extends AbstractAdapter implements SessionUpdateTimestampH
         } catch (Throwable) {
             return false;
         }
+    }
+
+    /**
+     * Whether a Memcached result code means "there is no such item": either it
+     * was not found, or the key is one the client refuses to send (too long or
+     * containing a space), which can never hold a session. The latter comes from
+     * the id the client chose and must not lock the user out.
+     */
+    private function isMissing(int $code): bool
+    {
+        return $code === Memcached::RES_NOTFOUND || $code === Memcached::RES_BAD_KEY_PROVIDED;
     }
 
     private function key(string $id): string
