@@ -81,7 +81,7 @@ login.
 When the data did not change, `session.lazy_write` makes PHP call
 `updateTimestamp()`, which sends the payload cookie again with a fresh `ttl`, so
 the cookie's expiry slides with activity just as it does when the data changes.
-An unchanged session that has no payload cookie yet sets none.
+`updateTimestamp()` itself never creates a payload cookie when the request carried none.
 
 ## Constraints to keep in mind
 

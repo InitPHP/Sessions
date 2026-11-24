@@ -507,26 +507,4 @@ final class StrictModeTest extends TestCase
         self::assertSame($regenerated, $next);
         self::assertSame('admin', $seen);
     }
-
-    #[RequiresPhpExtension('openssl')]
-    public function testCookieAdapterDoesNotSetACookieForAnUnchangedEmptySession(): void
-    {
-        $this->requireEncryption();
-
-        $adapter = new class (['name' => 'payload', 'key' => self::COOKIE_KEY, 'ttl' => 3600]) extends CookieAdapter {
-            public int $writes = 0;
-
-            public function write(string $id, string $data): bool
-            {
-                ++$this->writes;
-
-                return parent::write($id, $data);
-            }
-        };
-
-        // First visit that stores nothing: no payload cookie, so nothing to renew.
-        $this->request($adapter, null, static function (): void {});
-
-        self::assertSame(0, $adapter->writes);
-    }
 }

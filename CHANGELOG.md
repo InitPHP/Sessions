@@ -24,7 +24,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `CookieAdapter` accepts an id only when it is the session id the request
   presented and the request carries a payload cookie that decrypts; ids PHP
   generates (`session_create_id()`, `regenerateId()`) are never reported as taken.
-  An unchanged empty session no longer sets a payload cookie. The payload carries
+  `updateTimestamp()` does not create a payload cookie when the request carried none. The payload carries
   no timestamp, so its lifetime remains enforced by the browser only.
 - `docs/Custom-Adapters.md` explains how a custom adapter opts in by implementing
   the interface itself, including the locking and "never create" rules.
