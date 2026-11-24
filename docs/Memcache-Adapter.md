@@ -60,6 +60,15 @@ stale sessions automatically — no garbage collection step is required. Memcach
 is a cache, so treat sessions as **ephemeral**: an eviction under memory pressure
 logs the user out.
 
+## Strict mode and lazy write
+
+The server drops expired items itself, so with `session.use_strict_mode` on a
+session id counts as known exactly when its item exists; an id with no item is
+replaced by a fresh one. When the data did not change, `session.lazy_write` makes
+PHP call `updateTimestamp()`, which renews the item's expiry with `touch` on the
+Memcached driver (back to the full `ttl`) and stores the payload again on the
+legacy Memcache driver, which has no `touch`.
+
 ## Behaviour notes
 
 - `read()` returns the stored payload, or `''` when the key is absent (a new

@@ -58,6 +58,15 @@ field — but note this adapter stores `timestamp` as an integer, so a TTL index
 would require storing a `UTCDateTime` instead. The built-in `gc()` is the
 supported path.
 
+## Strict mode and lazy write
+
+With `session.use_strict_mode` on, a session id counts as known only when a
+document with that `_id` exists and its `timestamp` is less than
+`session.gc_maxlifetime` seconds old; otherwise the id is replaced by a fresh one.
+When the data did not change, `session.lazy_write` makes PHP call
+`updateTimestamp()`, which sets `timestamp` to now on the existing document
+instead of rewriting the payload.
+
 ## Behaviour notes
 
 - `write()` **upserts** by `_id`, so repeated writes to the same session update

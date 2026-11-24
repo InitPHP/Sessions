@@ -126,4 +126,62 @@ final class PDOAdapterTest extends TestCase
         self::assertSame(1, $adapter->gc(3600));
         self::assertSame('', $adapter->read('sid'));
     }
+
+    public function testValidateIdIsFalseForUnknownSessions(): void
+    {
+        self::assertFalse($this->adapter()->validateId('missing'));
+    }
+
+    public function testValidateIdIsTrueForAFreshSession(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('sid', 'data');
+
+        self::assertTrue($adapter->validateId('sid'));
+    }
+
+    public function testValidateIdIsFalseForARowOlderThanTheLifetime(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('sid', 'data');
+        $this->pdo->exec("UPDATE sessions SET sess_timestamp = '2000-01-01 00:00:00'");
+
+        self::assertFalse($adapter->validateId('sid'));
+    }
+
+    public function testValidateIdHonoursTheIpAddressMatch(): void
+    {
+        $_SERVER['REMOTE_ADDR'] = '10.0.0.1';
+        $adapter = $this->adapter(['withIPAddress' => true]);
+        $adapter->write('sid', 'data');
+
+        self::assertTrue($adapter->validateId('sid'));
+
+        $_SERVER['REMOTE_ADDR'] = '10.0.0.2';
+        self::assertFalse($adapter->validateId('sid'));
+
+        unset($_SERVER['REMOTE_ADDR']);
+    }
+
+    public function testUpdateTimestampRenewsTheRowWithoutChangingItsData(): void
+    {
+        $adapter = $this->adapter();
+        $adapter->write('sid', 'data');
+        $this->pdo->exec("UPDATE sessions SET sess_timestamp = '2000-01-01 00:00:00'");
+        self::assertFalse($adapter->validateId('sid'));
+
+        self::assertTrue($adapter->updateTimestamp('sid', 'data'));
+
+        self::assertTrue($adapter->validateId('sid'));
+        self::assertSame('data', $adapter->read('sid'));
+    }
+
+    public function testUpdateTimestampNeverCreatesARow(): void
+    {
+        $this->adapter()->updateTimestamp('ghost', 'data');
+
+        $statement = $this->pdo->query('SELECT COUNT(*) FROM sessions');
+        self::assertNotFalse($statement);
+        self::assertSame(0, (int) $statement->fetchColumn());
+    }
 }

@@ -45,10 +45,27 @@ You can also trigger it manually:
 $deleted = $adapter->gc(3600); // delete sessions idle for > 1 hour
 ```
 
+## Strict mode and lazy write
+
+With `session.use_strict_mode` on, a session id counts as known only when its file
+exists and was modified less than `session.gc_maxlifetime` seconds ago; an id with
+no file, or with a stale file, is replaced by a fresh id. When the data did not
+change, `session.lazy_write` makes PHP call `updateTimestamp()`, which touches the
+file (renewing its modification time) instead of rewriting it.
+
+## Which ids are accepted
+
+The id becomes part of a file name, so only ids made of letters, digits, `,`, `-`
+and `_` (1 to 256 characters) are used. Anything else (a path separator, `..`, a
+NUL byte, an empty or overlong id) is treated as a session that does not exist: it
+is not validated, read, written or deleted, and `write()` returns `false`. This
+holds even when you pass such an id to `setID()` yourself, so a session id can
+never point outside the configured directory. PHP's own ids always fit this rule.
+
 ## Behaviour notes
 
 - `read()` returns the file's contents, or `''` if the file does not exist (a
-  brand-new session).
+  brand-new session) or the id is not an accepted one.
 - `write()` overwrites the file atomically via `file_put_contents()`.
 - `destroy()` deletes the file if present and always reports success (destroying a
   non-existent session is not an error).

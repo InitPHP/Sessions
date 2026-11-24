@@ -71,7 +71,7 @@ Exception-aware wrapper over PHP's session lifecycle functions.
 | `getName()` | `string` | Current session name (`''` if none). |
 | `setName(string $name)` | `Manager` | Set the session name (before start). |
 | `getID()` | `string` | Current id (`''` if none). |
-| `setID(string $sessionId)` | `bool` | Set the id (before start). Do not rely on the return value; read `getID()` — see [Session Lifecycle](Session-Lifecycle.md#getid-string-and-setidstring-id-bool). |
+| `setID(string $sessionId)` | `bool` | Set the id (before start). `true` when PHP accepted it and `getID()` now returns it; `false` when PHP refused it (session already active, headers sent) — see [Session Lifecycle](Session-Lifecycle.md#getid-string-and-setidstring-id-bool). |
 | `regenerateId(bool $deleteOldSession = false)` | `bool` | New id, optionally deleting the old record. |
 | `flush()` | `bool` | Clear all values. Requires an active session. |
 | `unset()` | `bool` | Clear all values. Requires an active session. |
@@ -86,13 +86,17 @@ Full prose: [Session Lifecycle](Session-Lifecycle.md).
 
 ## `S\AbstractAdapter`
 
-Base class for save handlers. `implements` [`AdapterInterface`](#sinterfacesadapterinterface).
+Base class for save handlers. `implements` [`AdapterInterface`](#sinterfacesadapterinterface)
+and PHP's `SessionUpdateTimestampHandlerInterface`, which is what makes
+`session.use_strict_mode` and `session.lazy_write` work with an adapter.
 
 | Method | Default | Notes |
 | --- | --- | --- |
 | `open(string $path, string $name): bool` | `true` | Override to open a connection. |
 | `close(): bool` | `true` | Override to close a connection. |
 | `gc(int $max_lifetime): int\|false` | `0` | Number of deleted sessions, or `false`. |
+| `validateId(string $id): bool` | `read()` returns a non-empty payload | Strict mode: does `$id` belong to a stored session? Override with a cheaper existence check. |
+| `updateTimestamp(string $id, string $data): bool` | `write($id, $data)` | Lazy write: renew the session lifetime for unchanged data. |
 | `read(string $id): string\|false` | **abstract** | Payload, or `''` when absent, or `false` on failure. |
 | `write(string $id, string $data): bool` | **abstract** | Persist the payload. |
 | `destroy(string $id): bool` | **abstract** | Delete the session. |
@@ -109,7 +113,9 @@ interface AdapterInterface extends \SessionHandlerInterface {}
 
 A package-owned marker type that every adapter implements. It adds no methods on
 top of PHP's native `SessionHandlerInterface`; hint against it when you accept an
-adapter.
+adapter. (Strict mode and lazy write come from
+[`AbstractAdapter`](#sabstractadapter), which additionally implements
+`SessionUpdateTimestampHandlerInterface`.)
 
 ---
 

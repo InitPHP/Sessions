@@ -57,6 +57,21 @@ Session::createImmutable($adapter)->start();
   `samesite=Lax`); set `secure => true` in production (HTTPS) and consider
   `samesite => 'Strict'` for sensitive apps.
 
+## Strict mode and lazy write
+
+The session data travels in the payload cookie, not on the server, so the session
+id is not a lookup key here. With `session.use_strict_mode` on, an id counts as
+known only when the request also carries a payload cookie that decrypts with your
+`key`. A first visit, an expired, tampered or foreign-key payload cookie, or an id
+sent without its payload therefore gets a fresh id. This keeps client-chosen ids
+out, but it is not an authentication check: anyone who holds a valid payload
+cookie can pair it with any id, which is why the cookie itself must stay secret
+(`secure`, `httponly`) and why you still call `regenerateId(true)` after login.
+
+When the data did not change, `session.lazy_write` makes PHP call
+`updateTimestamp()`, which sends the payload cookie again with a fresh `ttl`, so
+the cookie's expiry slides with activity just as it does when the data changes.
+
 ## Constraints to keep in mind
 
 - **Size.** Cookies are capped (~4 KB per cookie by browsers). Keep the payload

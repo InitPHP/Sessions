@@ -153,13 +153,17 @@ class Manager
      * Sets the session id. Must be called before {@see start()}.
      *
      * @param string $sessionId The session id to use.
-     * @return bool True when the id was accepted.
+     * @return bool True when PHP accepted the id, i.e. {@see getID()} now
+     *              returns it. False when it was refused (for example because
+     *              a session is already active or headers were already sent).
      * @throws SessionException
      */
     public function setID(string $sessionId): bool
     {
         try {
-            return session_id($sessionId) === $sessionId;
+            // session_id($id) returns the *previous* id (or false on failure),
+            // so success is confirmed by reading the id back.
+            return session_id($sessionId) !== false && session_id() === $sessionId;
         } catch (Throwable $e) {
             throw new SessionException($e->getMessage(), (int) $e->getCode(), $e);
         }

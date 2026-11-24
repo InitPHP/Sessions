@@ -42,6 +42,14 @@ use function time;
  *  - `httponly` (bool)   Hide from JavaScript. Defaults to true.
  *  - `samesite` (string) `Lax`, `Strict` or `None`. Defaults to `Lax`.
  *
+ * The session id is not a lookup key here (the data travels with the
+ * request), so strict mode is answered from the payload cookie:
+ * {@see validateId()} accepts an id only when the request carries a payload
+ * cookie that decrypts with the configured key. A request without one (first
+ * visit, expired, tampered or foreign-key cookie) therefore gets a fresh id.
+ * {@see updateTimestamp()} re-sends the cookie so its expiry slides with
+ * `session.lazy_write`.
+ *
  * @requires initphp/encryption
  */
 class CookieAdapter extends AbstractAdapter
@@ -51,6 +59,9 @@ class CookieAdapter extends AbstractAdapter
     private int $ttl;
 
     private string $data;
+
+    /** Whether the request carried a payload cookie that decrypted. */
+    private bool $hasPayload = false;
 
     /** @var array<string, mixed> */
     private array $cookieOptions;
@@ -94,6 +105,20 @@ class CookieAdapter extends AbstractAdapter
         $this->decode();
     }
 
+    public function validateId(string $id): bool
+    {
+        if (!isset($this->data)) {
+            $this->decode();
+        }
+
+        return $this->hasPayload;
+    }
+
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        return $this->write($id, $data);
+    }
+
     public function read(string $id): string|false
     {
         if (!isset($this->data)) {
@@ -106,6 +131,7 @@ class CookieAdapter extends AbstractAdapter
     public function write(string $id, string $data): bool
     {
         $this->data = $data;
+        $this->hasPayload = true;
         $value = base64_encode($this->encrypt->encrypt($data));
 
         return setcookie($this->name, $value, [
@@ -116,6 +142,7 @@ class CookieAdapter extends AbstractAdapter
     public function destroy(string $id): bool
     {
         $this->data = '';
+        $this->hasPayload = false;
 
         return setcookie($this->name, '', [
             'expires' => time() - 86400,
@@ -125,6 +152,7 @@ class CookieAdapter extends AbstractAdapter
     private function decode(): void
     {
         $this->data = '';
+        $this->hasPayload = false;
 
         if (!isset($_COOKIE[$this->name])) {
             return;
@@ -144,6 +172,7 @@ class CookieAdapter extends AbstractAdapter
 
         if (\is_string($data)) {
             $this->data = $data;
+            $this->hasPayload = true;
         }
     }
 }

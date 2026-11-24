@@ -119,6 +119,8 @@ Use with care behind proxies and for mobile clients (see the adapter's warning).
 ## Checklist
 
 - ✅ `regenerateId(true)` immediately after a successful login.
+- ✅ `session.use_strict_mode=1`, so PHP replaces any id the server never issued
+  (see [Strict mode and lazy write](Session-Lifecycle.md#strict-mode-and-lazy-write)).
 - ✅ Store an id, reload the user each request.
 - ✅ `cookie_httponly`, `cookie_secure` (always on; off only for local development), and a sensible `cookie_samesite`.
 - ✅ `flush()` + `regenerateId(true)` + `destroy()` on logout.

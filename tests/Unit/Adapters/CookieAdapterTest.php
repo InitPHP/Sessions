@@ -86,4 +86,29 @@ final class CookieAdapterTest extends TestCase
 
         self::assertSame('', $adapter->read('sid'));
     }
+
+    public function testValidateIdIsFalseWithoutAPayloadCookie(): void
+    {
+        $adapter = new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]);
+
+        self::assertFalse($adapter->validateId('client-chosen-id'));
+    }
+
+    public function testValidateIdIsTrueWithADecryptablePayloadCookie(): void
+    {
+        $_COOKIE[self::NAME] = $this->encryptWith(self::KEY, 'serialized-session');
+
+        $adapter = new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]);
+
+        self::assertTrue($adapter->validateId('sid'));
+    }
+
+    public function testValidateIdIsFalseForATamperedOrForeignKeyCookie(): void
+    {
+        $_COOKIE[self::NAME] = 'not-a-valid-ciphertext';
+        self::assertFalse((new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]))->validateId('sid'));
+
+        $_COOKIE[self::NAME] = $this->encryptWith('a-totally-different-key', 'secret');
+        self::assertFalse((new CookieAdapter(['name' => self::NAME, 'key' => self::KEY]))->validateId('sid'));
+    }
 }

@@ -49,40 +49,59 @@ echo Session::getName(); // 'APPSESSID'
 
 ## `getID(): string` and `setID(string $id): bool`
 
-Read or set the session id. `setID()` must be called before `start()`. Do not
-rely on its return value (it currently reports `false` even when the id was
-applied); read `getID()` instead:
+Read or set the session id. `setID()` must be called before `start()`. It
+returns `true` when PHP accepted the id (so `getID()` now returns it) and `false`
+when PHP refused it, for example because a session is already active or headers
+were already sent:
 
 ```php
 // Rarely needed: PHP takes the id from the session cookie on its own.
 // Only ever use an id your own code generated.
 $id = session_create_id(); // string|false
 
-if ($id !== false) {
-    Session::setID($id);
+if ($id !== false && Session::setID($id)) {
+    Session::start();
 }
-Session::start();
 
 echo Session::getID();
 ```
 
-With PHP's native save handler and `session.use_strict_mode` on, PHP discards an id
-that has no stored session and issues a new one, so `getID()` can differ from the
-id you set. Do not assume it matches.
+With `session.use_strict_mode` on, PHP discards an id that has no stored session and
+issues a new one, so `getID()` can differ from the id you set. Do not assume it
+matches.
 
 > **Never pass an id taken from the request** (a query parameter, a form field, a
 > header) to `setID()`. That is session fixation: an attacker who can make a
 > victim adopt a known id then shares their session once they log in.
->
-> **`session.use_strict_mode` does not protect the package's adapters.** With
-> PHP's native handlers, strict mode makes PHP refuse a session id it did not
-> issue. It does that by asking the save handler to validate the id
-> (`validateId()`), and the adapters in this package implement only the basic
-> `SessionHandlerInterface`; PHP then accepts any id a client sends in the
-> cookie. When you use an adapter, the protection against fixation is to call
-> [`regenerateId(true)`](#regenerateidbool-deleteoldsession--false-bool) right
-> after login and after every privilege change. Keep strict mode on anyway; it
-> costs nothing and covers the native handler.
+
+### Strict mode and lazy write
+
+The adapters in this package support `session.use_strict_mode` and
+`session.lazy_write`. They implement PHP's `SessionUpdateTimestampHandlerInterface`
+(through [`AbstractAdapter`](Custom-Adapters.md)), which PHP uses for two things:
+
+- **Strict mode.** At `start()`, PHP asks the adapter whether the id the client
+  sent belongs to a stored session (`validateId()`). If it does not (an id the
+  server never issued, or a session that has expired), PHP discards it and issues
+  a fresh id, so an attacker cannot make a victim adopt an id of the attacker's
+  choosing. Turn it on with `session.use_strict_mode=1` (the recommended setting)
+  or per call: `Session::start(['use_strict_mode' => 1])`.
+- **Lazy write.** When a request does not change the session data, PHP skips
+  `write()` and calls `updateTimestamp()` instead, which renews the session's
+  lifetime (file modification time, row/document timestamp, key TTL, cookie
+  expiry) without rewriting the payload. `session.lazy_write` is on by default.
+
+How "exists" is decided depends on the store: see the *Strict mode and lazy
+write* section of each adapter page ([File](File-Adapter.md),
+[Redis](Redis-Adapter.md), [PDO](PDO-Adapter.md), [Cookie](Cookie-Adapter.md),
+[Memcache(d)](Memcache-Adapter.md), [MongoDB](MongoDB-Adapter.md)). A
+[custom adapter](Custom-Adapters.md) that extends `AbstractAdapter` gets a working
+default; override it when your store can answer more cheaply.
+
+Strict mode is not a replacement for
+[`regenerateId(true)`](#regenerateidbool-deleteoldsession--false-bool): call it
+right after login and after every privilege change, because an id the server
+*did* issue can still be known to an attacker.
 
 `getID()` returns an empty string when there is no id yet.
 

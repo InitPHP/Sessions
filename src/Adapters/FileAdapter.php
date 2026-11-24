@@ -25,7 +25,9 @@ use function filemtime;
 use function glob;
 use function is_dir;
 use function is_writable;
+use function preg_match;
 use function time;
+use function touch;
 use function unlink;
 
 /**
@@ -37,6 +39,16 @@ use function unlink;
  * Supported options:
  *  - `path`   (string, required) Writable directory the files live in.
  *  - `prefix` (string, optional) File name prefix. Defaults to `sess_`.
+ *
+ * Session ids are used as file names, so only ids made of letters, digits,
+ * `,`, `-` and `_` (at most 256 characters) are accepted. Any other id (path
+ * separators, `..`, NUL bytes, ...) is treated as "no such session": it is
+ * never validated, read, written or deleted, so an id cannot point outside
+ * the configured directory.
+ *
+ * With `session.use_strict_mode` on, a session file counts as existing only
+ * while it is younger than `session.gc_maxlifetime`; the file's modification
+ * time is renewed by {@see updateTimestamp()}.
  */
 class FileAdapter extends AbstractAdapter
 {
@@ -67,10 +79,33 @@ class FileAdapter extends AbstractAdapter
         }
     }
 
+    public function validateId(string $id): bool
+    {
+        $file = $this->filename($id);
+        if ($file === null) {
+            return false;
+        }
+
+        $mtime = file_exists($file) ? @filemtime($file) : false;
+
+        return $mtime !== false && $mtime >= time() - $this->sessionLifetime();
+    }
+
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        $file = $this->filename($id);
+        if ($file === null) {
+            return false;
+        }
+
+        // Only renew an existing session; never create a file here.
+        return file_exists($file) && @touch($file);
+    }
+
     public function read(string $id): string|false
     {
         $file = $this->filename($id);
-        if (!file_exists($file)) {
+        if ($file === null || !file_exists($file)) {
             return '';
         }
 
@@ -79,13 +114,18 @@ class FileAdapter extends AbstractAdapter
 
     public function write(string $id, string $data): bool
     {
-        return file_put_contents($this->filename($id), $data) !== false;
+        $file = $this->filename($id);
+        if ($file === null) {
+            return false;
+        }
+
+        return file_put_contents($file, $data) !== false;
     }
 
     public function destroy(string $id): bool
     {
         $file = $this->filename($id);
-        if (file_exists($file)) {
+        if ($file !== null && file_exists($file)) {
             unlink($file);
         }
 
@@ -110,8 +150,16 @@ class FileAdapter extends AbstractAdapter
         return $deleted;
     }
 
-    private function filename(string $id): string
+    /**
+     * Maps a session id to its file, or null when the id is not safe to use
+     * as a file name.
+     */
+    private function filename(string $id): ?string
     {
+        if (preg_match('/^[A-Za-z0-9,_-]{1,256}$/D', $id) !== 1) {
+            return null;
+        }
+
         return $this->path . '/' . $this->prefix . $id;
     }
 }

@@ -47,6 +47,11 @@ If you write your own adapter, two contract details matter most:
 minimal adapter only implements `read()`, `write()` and `destroy()`. See
 [Custom Adapters](Custom-Adapters.md).
 
+Every bundled adapter supports `session.use_strict_mode` (PHP rejects a session id
+the server did not issue) and `session.lazy_write` (an unchanged session only has
+its lifetime renewed); see
+[Strict mode and lazy write](Session-Lifecycle.md#strict-mode-and-lazy-write).
+
 ## Error behaviour
 
 - **Construction-time** problems (missing extension, bad options, unreachable

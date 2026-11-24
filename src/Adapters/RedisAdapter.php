@@ -37,6 +37,9 @@ use Throwable;
  *  - `database` (int)     Database index to SELECT. Defaults to `0`.
  *  - `ttl`      (int)     Key expiry in seconds. Defaults to `86400`.
  *  - `prefix`   (string)  Key prefix. Defaults to none.
+ *
+ * Redis drops expired keys itself, so a key that exists is a live session
+ * ({@see validateId()}); {@see updateTimestamp()} renews the key's expiry.
  */
 class RedisAdapter extends AbstractAdapter
 {
@@ -92,6 +95,39 @@ class RedisAdapter extends AbstractAdapter
             $this->redis->select($this->database);
         } catch (Throwable $e) {
             throw new SessionAdapterException('Redis database select failed. ' . $e->getMessage(), (int) $e->getCode(), $e);
+        }
+    }
+
+    public function validateId(string $id): bool
+    {
+        try {
+            $exists = $this->redis->exists($this->prefix . $id);
+
+            return $exists === true || (\is_int($exists) && $exists > 0);
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        try {
+            $key = $this->prefix . $id;
+
+            if ($this->ttl > 0) {
+                if ($this->redis->expire($key, $this->ttl) === true) {
+                    return true;
+                }
+            } elseif ($this->validateId($id)) {
+                // No expiry configured: nothing to renew while the key lives.
+                return true;
+            }
+
+            // The key vanished between read and close: store the data again
+            // rather than silently losing the session.
+            return $this->write($id, $data);
+        } catch (Throwable) {
+            return false;
         }
     }
 

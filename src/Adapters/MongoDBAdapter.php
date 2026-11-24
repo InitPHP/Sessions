@@ -38,6 +38,10 @@ use function time;
  *  - `dsn`        (string, required) MongoDB connection string.
  *  - `collection` (string, required) Namespace as `database.collection`.
  *                 The legacy `collation` key is accepted as an alias.
+ *
+ * With `session.use_strict_mode` on, a document counts as an existing session
+ * only while its `timestamp` is younger than `session.gc_maxlifetime`;
+ * {@see updateTimestamp()} renews that timestamp.
  */
 class MongoDBAdapter extends AbstractAdapter
 {
@@ -76,6 +80,39 @@ class MongoDBAdapter extends AbstractAdapter
             $this->manager = new Manager((string) $options['dsn']);
         } catch (Throwable $e) {
             throw new SessionAdapterException('MongoDB connection failed. ' . $e->getMessage(), (int) $e->getCode(), $e);
+        }
+    }
+
+    public function validateId(string $id): bool
+    {
+        try {
+            $query = new Query([
+                '_id'       => $id,
+                'timestamp' => ['$gte' => time() - $this->sessionLifetime()],
+            ]);
+
+            return $this->manager->executeQuery($this->collection, $query)->toArray() !== [];
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        try {
+            $bulkWrite = new BulkWrite();
+            $bulkWrite->update(['_id' => $id], ['$set' => ['timestamp' => time()]]);
+
+            $result = $this->manager->executeBulkWrite($this->collection, $bulkWrite);
+            if (!$result->isAcknowledged()) {
+                return false;
+            }
+
+            // The document vanished between read and close: store the data
+            // again rather than silently losing the session.
+            return ($result->getMatchedCount() ?? 0) > 0 || $this->write($id, $data);
+        } catch (Throwable) {
+            return false;
         }
     }
 

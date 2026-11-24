@@ -65,6 +65,16 @@ keys without expiry (you then manage cleanup yourself).
 The session's effective lifetime is the larger of this `ttl` and whatever your
 session cookie lifetime is; align them to avoid surprises.
 
+## Strict mode and lazy write
+
+Redis drops expired keys itself, so with `session.use_strict_mode` on a session id
+counts as known exactly when its key exists (`EXISTS`); an id with no key is
+replaced by a fresh one. When the data did not change, `session.lazy_write` makes
+PHP call `updateTimestamp()`, which renews the key's expiry with `EXPIRE` (back to
+the full `ttl`) instead of rewriting the payload. Without that renewal an active
+user would be logged out `ttl` seconds after the last change to their session
+data. With `ttl => 0` there is no expiry to renew.
+
 ## Errors
 
 - No `ext-redis` → [`SessionNotSupportedAdapter`](Exceptions.md).

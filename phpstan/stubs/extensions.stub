@@ -29,6 +29,12 @@ namespace {
 
         /** @return Redis|int|false */
         public function del(string ...$keys) {}
+
+        /** @return Redis|int|bool */
+        public function exists(mixed $key, mixed ...$otherKeys) {}
+
+        /** @return Redis|bool */
+        public function expire(string $key, int $timeout, ?string $mode = null) {}
     }
 
     class Memcache
@@ -66,6 +72,8 @@ namespace {
         public function getResultCode(): int {}
 
         public function set(string $key, mixed $value, int $expiration = 0): bool {}
+
+        public function touch(string $key, int $expiration = 0): bool {}
 
         public function delete(string $key, int $time = 0): bool {}
 
@@ -138,5 +146,7 @@ namespace MongoDB\Driver {
         public function getModifiedCount(): ?int {}
 
         public function getUpsertedCount(): ?int {}
+
+        public function getMatchedCount(): ?int {}
     }
 }

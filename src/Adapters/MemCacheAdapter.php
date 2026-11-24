@@ -25,6 +25,7 @@ use Throwable;
 use function array_change_key_case;
 use function array_merge;
 use function class_exists;
+use function method_exists;
 
 use const CASE_LOWER;
 
@@ -41,6 +42,9 @@ use const CASE_LOWER;
  *  - `raw`    (bool)   Enables the binary protocol (Memcached only).
  *  - `prefix` (string) Key prefix. Defaults to none.
  *  - `ttl`    (int)    Item expiry in seconds. Defaults to `86400`.
+ *
+ * The server drops expired items itself, so an item that exists is a live
+ * session ({@see validateId()}); {@see updateTimestamp()} renews its expiry.
  */
 class MemCacheAdapter extends AbstractAdapter
 {
@@ -91,6 +95,45 @@ class MemCacheAdapter extends AbstractAdapter
         }
 
         unset($this->memcache);
+    }
+
+    public function validateId(string $id): bool
+    {
+        try {
+            $key = $this->key($id);
+            $client = $this->getMemcache();
+
+            if ($client instanceof Memcache) {
+                return $client->get($key) !== false;
+            }
+
+            $client->get($key);
+
+            return $client->getResultCode() === Memcached::RES_SUCCESS;
+        } catch (Throwable) {
+            return false;
+        }
+    }
+
+    public function updateTimestamp(string $id, string $data): bool
+    {
+        try {
+            $client = $this->getMemcache();
+
+            // Memcached can renew the expiry in place; the legacy Memcache
+            // driver cannot, so the payload is stored again.
+            if (
+                $client instanceof Memcached
+                && method_exists($client, 'touch')
+                && $client->touch($this->key($id), (int) $this->credentials['ttl'])
+            ) {
+                return true;
+            }
+
+            return $this->write($id, $data);
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     public function read(string $id): string|false
