@@ -35,13 +35,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   which PHP 8.6 asks every session handler to provide and PHP 9.0 will require.
   The id has the shape PHP's own generator produces (`session.sid_length`
   characters of `session.sid_bits_per_character` bits, 32 hexadecimal characters
-  by default); PHP still collision-checks it through `validateId()` and applies
-  any `session_create_id()` prefix. This removes the PHP 8.6 deprecation
+  by default); PHP collision-checks an id from `session_create_id()` (and from
+  `regenerateId()` under strict mode) through `validateId()`, but not the id of a
+  brand-new session, and applies any `session_create_id()` prefix itself. This removes the PHP 8.6 deprecation
   warnings of the six adapters. Behaviour on PHP 8.2 to 8.5 is unchanged. Because
   `AbstractAdapter` is unchanged, PHP 8.6 still warns once that `AbstractAdapter`
   itself, and any custom adapter that extends it, lacks `create_sid()` and
-  `validateId()`; a custom adapter silences it by implementing the interfaces (see
-  `docs/Custom-Adapters.md`).
+  `validateId()`; a custom adapter silences the warning for its own class by
+  implementing the interfaces (see `docs/Custom-Adapters.md`), but the one for
+  `AbstractAdapter` remains.
 - `docs/Custom-Adapters.md` explains how a custom adapter opts in by implementing
   the interface itself, including the locking and "never create" rules.
 

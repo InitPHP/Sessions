@@ -30,6 +30,8 @@ report(static function (): array {
             'implements_session_id_interface' => $adapter instanceof SessionIdInterface,
             'first' => $adapter->create_sid(),
             'second' => $adapter->create_sid(),
+            // Enough ids to judge the randomness of every position.
+            'many' => array_map(static fn(): string => $adapter->create_sid(), range(1, 200)),
         ];
     }
 

@@ -24,20 +24,24 @@ use PHPUnit\Framework\TestCase;
 final class SessionIdGenerationTest extends TestCase
 {
     /**
-     * @return iterable<string, array{array<string, string>, int, string}>
+     * @return iterable<string, array{array<string, string>, int, string, string}>
      */
     public static function configurations(): iterable
     {
-        yield 'defaults (32 characters, 4 bits)' => [[], 32, '/^[0-9a-f]{32}$/'];
+        $alphabet = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ,-';
+
+        yield 'defaults (32 characters, 4 bits)' => [[], 32, '/^[0-9a-f]{32}$/', substr($alphabet, 0, 16)];
         yield '40 characters, 5 bits' => [
             ['session.sid_length' => '40', 'session.sid_bits_per_character' => '5'],
             40,
             '/^[0-9a-v]{40}$/',
+            substr($alphabet, 0, 32),
         ];
         yield '48 characters, 6 bits' => [
             ['session.sid_length' => '48', 'session.sid_bits_per_character' => '6'],
             48,
             '/^[0-9a-zA-Z,-]{48}$/',
+            $alphabet,
         ];
     }
 
@@ -45,7 +49,7 @@ final class SessionIdGenerationTest extends TestCase
      * @param array<string, string> $ini
      */
     #[DataProvider('configurations')]
-    public function testIdsHaveTheShapePhpItselfProduces(array $ini, int $length, string $pattern): void
+    public function testIdsHaveTheShapePhpItselfProduces(array $ini, int $length, string $pattern, string $alphabet): void
     {
         $o = WorkerRunner::observe('ids', $ini);
 
@@ -63,7 +67,41 @@ final class SessionIdGenerationTest extends TestCase
             self::assertMatchesRegularExpression($pattern, $ids['first'], $class);
             self::assertMatchesRegularExpression($pattern, $ids['second'], $class);
             self::assertNotSame($ids['first'], $ids['second'], $class . ' must not repeat ids');
+
+            $this->assertIsRandom($ids['many'], $length, $alphabet, $class);
         }
+    }
+
+    /**
+     * Guards against losing entropy (too few random bytes, a constant tail) or
+     * ignoring the configured bits per character, which the pattern alone
+     * cannot see: every position must vary widely and the whole alphabet must
+     * show up. The thresholds are far below what 200 random ids produce
+     * (about 16, 32 and 63 distinct characters per position), so a false alarm
+     * is practically impossible.
+     */
+    private function assertIsRandom(mixed $ids, int $length, string $alphabet, string $class): void
+    {
+        self::assertIsArray($ids);
+        self::assertCount(200, array_unique($ids), $class . ' repeated an id among 200');
+
+        $seen = [];
+        for ($position = 0; $position < $length; ++$position) {
+            $column = [];
+            foreach ($ids as $id) {
+                self::assertIsString($id);
+                $column[$id[$position]] = true;
+                $seen[$id[$position]] = true;
+            }
+            self::assertGreaterThanOrEqual(
+                intdiv(strlen($alphabet), 2),
+                count($column),
+                $class . ' position ' . $position . ' is not random enough',
+            );
+        }
+
+        $missing = array_diff(str_split($alphabet), array_keys($seen));
+        self::assertSame([], array_values($missing), $class . ' never produced some characters of the alphabet');
     }
 
     public function testTheBundledAdaptersRaiseNoSessionHandlerWarningOfTheirOwn(): void

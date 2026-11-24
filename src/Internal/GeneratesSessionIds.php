@@ -29,8 +29,10 @@ use function strlen;
  * The id has exactly the shape PHP's own generator produces: random bits
  * rendered with `session.sid_bits_per_character` bits per character (4, 5 or 6)
  * and `session.sid_length` characters, 32 hexadecimal characters by default. PHP
- * still checks the id for collisions through `validateId()` and applies any
- * `session_create_id()` prefix itself, so behaviour matches the previous
+ * checks an id from `session_create_id()` (and from `session_regenerate_id()`
+ * under strict mode) for collisions through `validateId()`, but not the id of a
+ * brand-new session, so the randomness here is what protects it. PHP applies
+ * any `session_create_id()` prefix itself. Behaviour matches the previous
  * default.
  *
  * @internal Not part of the public API; do not use it in your own adapters.

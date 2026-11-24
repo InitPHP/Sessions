@@ -22,8 +22,28 @@ set_error_handler(static function (int $severity, string $message, string $file,
         return true;
     }
 
+    // Also remembered: the adapters catch Throwable, which could swallow the
+    // exception below; report() fails the run when anything was recorded.
+    workerErrors($message . ' at ' . $file . ':' . $line);
+
     throw new ErrorException($message, 0, $severity, $file, $line);
 });
+
+/**
+ * Records (when given a message) and returns the warnings raised so far.
+ *
+ * @return list<string>
+ */
+function workerErrors(?string $message = null): array
+{
+    static $errors = [];
+
+    if ($message !== null) {
+        $errors[] = $message;
+    }
+
+    return $errors;
+}
 
 require \dirname(__DIR__, 3) . '/vendor/autoload.php';
 
@@ -52,6 +72,10 @@ function report(callable $scenarios): never
         $result = ['observations' => $scenarios()];
     } catch (Throwable $e) {
         $result = ['error' => $e::class . ': ' . $e->getMessage() . ' at ' . $e->getFile() . ':' . $e->getLine()];
+    }
+
+    if (workerErrors() !== []) {
+        $result = ['error' => 'Warnings were raised (possibly swallowed by an adapter): ' . implode('; ', workerErrors())];
     }
 
     echo json_encode($result, JSON_THROW_ON_ERROR);

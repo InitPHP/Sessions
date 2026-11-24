@@ -59,8 +59,12 @@ final class ArrayAdapter extends AbstractAdapter implements SessionIdInterface, 
 - **`create_sid()`** creates the id for a new session and for `regenerateId()`.
   PHP 8.6 warns (and PHP 9.0 will refuse) when a session handler does not provide
   it. Return a random id of the shape PHP produces (`session.sid_length`
-  characters, 32 hexadecimal characters by default); PHP collision-checks it with
-  `validateId()` and adds any `session_create_id()` prefix itself. Every adapter
+  characters, 32 hexadecimal characters by default) from a cryptographically secure
+  source such as `random_bytes()`. PHP collision-checks an id from
+  `session_create_id()` (and from `regenerateId()` under strict mode) with
+  `validateId()`, but **not** the id of a brand-new session, so the randomness you
+  return is the only protection against guessing; PHP adds any
+  `session_create_id()` prefix itself. Every adapter
   that extends the unchanged `AbstractAdapter` gets PHP 8.6's warning once for
   `AbstractAdapter` itself; implementing the interfaces above removes the warning
   for your own class.
@@ -97,8 +101,8 @@ public `validateId()`, `updateTimestamp()` and `create_sid()` methods, and with
 subclass overrides `read()`/`write()`/`destroy()` (for example to prefix or
 encrypt ids or payloads), override **both** new methods as well, or active
 sessions stop being renewed and ids are looked up under the wrong key. A subclass
-must not declare its own `validateId` or `updateTimestamp` with a different
-signature or a non-public visibility.
+must not declare its own `validateId`, `updateTimestamp` or `create_sid` with a
+different signature or a non-public visibility.
 
 ## A worked example — in-memory adapter
 
