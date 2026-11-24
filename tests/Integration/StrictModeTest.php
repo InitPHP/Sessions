@@ -570,6 +570,19 @@ final class StrictModeTest extends TestCase
         // The id of a new session and the one after regenerateId() are both
         // created by the adapter; PHP's collision check goes through validateId().
         self::assertStringStartsWith('custom-', $id);
-        self::assertMatchesRegularExpression('/^custom-[0-9a-f]{32}$/', $regenerated);
+
+        // The shape follows the host's configuration (php.ini may set 26
+        // characters of 5 bits, PHP's builtin default is 32 of 4).
+        $bits = (int) ini_get('session.sid_bits_per_character');
+        $length = (int) ini_get('session.sid_length');
+        $class = match ($bits) {
+            5 => '0-9a-v',
+            6 => '0-9a-zA-Z,\-',
+            default => '0-9a-f',
+        };
+        self::assertMatchesRegularExpression(
+            '/^custom-[' . $class . ']{' . ($length > 0 ? $length : 32) . '}$/',
+            $regenerated,
+        );
     }
 }
