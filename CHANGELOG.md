@@ -4,11 +4,11 @@ All notable changes to `initphp/sessions` are documented here. The format is bas
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [5.1.0] - 2026-11-25
+## [6.0.0] - 2026-11-25
 
 > **If you subclass a bundled adapter** (for example to prefix session ids), read
-> the "Subclasses of the bundled adapters" note under *Changed* before upgrading.
-> The subclass has to override `validateId()` and `updateTimestamp()` as well as
+> *Changed (breaking)* and *Upgrading* below before upgrading. The subclass has to
+> override `validateId()` and `updateTimestamp()` as well as
 > `read()`/`write()`/`destroy()`: otherwise active sessions are no longer renewed
 > and, with `session.use_strict_mode` on, the inherited `validateId()` does not find
 > the prefixed record, so every request gives the user a new session id.
@@ -73,6 +73,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `AbstractAdapter` and `AdapterInterface` are unchanged: custom adapters that
   extend `AbstractAdapter` behave exactly as before and are not subject to strict
   mode until they implement `SessionUpdateTimestampHandlerInterface` themselves.
+
+### Changed (breaking)
+
 - With `session.use_strict_mode` on, a session id a bundled adapter does not know
   (or whose session expired) is now replaced by a fresh id instead of being
   accepted. Applications that relied on adopting any client-supplied id must turn
@@ -86,6 +89,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `updateTimestamp` with a different signature or a non-public visibility fails
   with a fatal error and must align it. The same applies to `create_sid()`, which
   the adapters now declare as a public method.
+
+#### Upgrading
+
+- If you extend `FileAdapter`, `PDOAdapter`, `RedisAdapter`, `MemCacheAdapter`,
+  `MongoDBAdapter` or `CookieAdapter` and change how ids map to stored records
+  (a prefix, a different key or file name), override `validateId()` and
+  `updateTimestamp()` with the same mapping as your `read()`/`write()`/`destroy()`.
+  Without them, active sessions are not renewed, and with
+  `session.use_strict_mode` on every request gives the user a new session id.
+- If your subclass already has a method called `validateId()`, `updateTimestamp()`
+  or `create_sid()`, make its signature match the interface and make it public.
+- If your application adopts a session id the client chose, set
+  `session.use_strict_mode` to `0`, or generate the id on the server.
+- Custom adapters that extend `AbstractAdapter` need no change; see
+  [Custom Adapters](docs/Custom-Adapters.md) to opt in to strict mode and lazy write.
 
 ### Documentation
 
