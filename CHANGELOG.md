@@ -4,7 +4,7 @@ All notable changes to `initphp/sessions` are documented here. The format is bas
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [5.1.0] - 2026-11-25
 
 ### Added
 
@@ -75,6 +75,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `updateTimestamp` with a different signature or a non-public visibility fails
   with a fatal error and must align it. The same applies to `create_sid()`, which
   the adapters now declare as a public method.
+
+### Documentation
+
+- The session cookie examples use `cookie_secure => true` (not a value derived from
+  `$_SERVER['HTTPS']`, which is empty behind a TLS-terminating proxy) and
+  `cookie_httponly => true`.
+- `Session::setID()` is documented as a call that takes only ids your own code
+  generated, whose return value must not be relied on (read `getID()`), and whose
+  id PHP may replace under `session.use_strict_mode`.
+- The adapter pages, FAQ, Session Lifecycle and API reference describe
+  `session.use_strict_mode` and `session.lazy_write`, and the new
+  [Custom Adapters](docs/Custom-Adapters.md) guide explains how a custom adapter
+  opts in.
 
 ## [5.0.0] - 2026-11-22
 
