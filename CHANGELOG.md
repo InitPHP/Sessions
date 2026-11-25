@@ -4,7 +4,14 @@ All notable changes to `initphp/sessions` are documented here. The format is bas
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [6.0.0] - 2026-11-25
+
+> **If you subclass a bundled adapter** (for example to prefix session ids), read
+> *Changed (breaking)* and *Upgrading* below before upgrading. The subclass has to
+> override `validateId()` and `updateTimestamp()` as well as
+> `read()`/`write()`/`destroy()`: otherwise active sessions are no longer renewed
+> and, with `session.use_strict_mode` on, the inherited `validateId()` does not find
+> the prefixed record, so every request gives the user a new session id.
 
 ### Added
 
@@ -25,6 +32,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (Memcached) now reports a server error from `read()` as a failure (`false`)
   instead of an empty session; only "not found" (or a key Memcached refuses to
   send, such as an id longer than 250 bytes) is an empty session.
+- `MongoDBAdapter` treats a session id that is not valid UTF-8 (the driver cannot
+  store it as a BSON string `_id`) as "no such session" in `read()`, `write()`,
+  `destroy()`, `validateId()` and `updateTimestamp()`, instead of failing to read or
+  write the session on every request of that client (the adapter returned `false`).
 - `CookieAdapter` accepts an id only when it is the session id the request
   presented (or the one the session was last read or written under, so closing
   and re-opening a session in one request keeps its id) and the request carries a payload cookie that decrypts; ids PHP
@@ -62,6 +73,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `AbstractAdapter` and `AdapterInterface` are unchanged: custom adapters that
   extend `AbstractAdapter` behave exactly as before and are not subject to strict
   mode until they implement `SessionUpdateTimestampHandlerInterface` themselves.
+
+### Changed (breaking)
+
 - With `session.use_strict_mode` on, a session id a bundled adapter does not know
   (or whose session expired) is now replaced by a fresh id instead of being
   accepted. Applications that relied on adopting any client-supplied id must turn
@@ -75,6 +89,36 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `updateTimestamp` with a different signature or a non-public visibility fails
   with a fatal error and must align it. The same applies to `create_sid()`, which
   the adapters now declare as a public method.
+
+#### Upgrading
+
+- If you extend `FileAdapter`, `PDOAdapter`, `RedisAdapter`, `MemCacheAdapter`,
+  `MongoDBAdapter` or `CookieAdapter` and change how ids map to stored records
+  (a prefix, a different key or file name), override `validateId()` and
+  `updateTimestamp()` with the same mapping as your `read()`/`write()`/`destroy()`.
+  Without them, active sessions are not renewed, and with
+  `session.use_strict_mode` on every request gives the user a new session id.
+- If your subclass already has a method called `validateId()`, `updateTimestamp()`
+  or `create_sid()`, make its signature match the interface and make it public.
+- If your application adopts a session id the client chose, set
+  `session.use_strict_mode` to `0`, or generate the id on the server.
+- Custom adapters that extend `AbstractAdapter` need no change; see
+  [Custom Adapters](docs/Custom-Adapters.md) to opt in to strict mode and lazy write.
+
+### Documentation
+
+- The session cookie examples use `cookie_secure => true` (not a value derived from
+  `$_SERVER['HTTPS']`, which is empty behind a TLS-terminating proxy) and
+  `cookie_httponly => true`.
+- `Session::setID()` is documented as a call that takes only ids your own code
+  generated (never one from the request); it returns whether PHP applied the id,
+  and under `session.use_strict_mode` PHP may still replace it when the session
+  starts, so `getID()` shows the id in use.
+- The adapter pages, FAQ, Session Lifecycle and API reference describe
+  `session.use_strict_mode` and `session.lazy_write`. The new "Strict mode and lazy
+  write" and "Extending a bundled adapter" sections of
+  [Custom Adapters](docs/Custom-Adapters.md) explain how a custom adapter opts in
+  and what a subclass of a bundled adapter must override.
 
 ## [5.0.0] - 2026-11-22
 
