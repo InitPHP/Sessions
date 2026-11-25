@@ -34,8 +34,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   send, such as an id longer than 250 bytes) is an empty session.
 - `MongoDBAdapter` treats a session id that is not valid UTF-8 (the driver cannot
   store it as a BSON string `_id`) as "no such session" in `read()`, `write()`,
-  `destroy()`, `validateId()` and `updateTimestamp()`, instead of throwing on every
-  request of that client.
+  `destroy()`, `validateId()` and `updateTimestamp()`, instead of failing to read or
+  write the session on every request of that client (the adapter returned `false`).
 - `CookieAdapter` accepts an id only when it is the session id the request
   presented (or the one the session was last read or written under, so closing
   and re-opening a session in one request keeps its id) and the request carries a payload cookie that decrypts; ids PHP
