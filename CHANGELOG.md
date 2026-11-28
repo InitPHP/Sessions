@@ -4,6 +4,22 @@ All notable changes to `initphp/sessions` are documented here. The format is bas
 on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- CI now also runs the test suite on PHP 8.6 (8.2, 8.3, 8.4, 8.5 and 8.6).
+- The test suite loads `tests/bootstrap.php`. PHP 8.6 warns, once per process,
+  that `AbstractAdapter` (which implements `SessionHandlerInterface` only) does
+  not provide `create_sid()` and `validateId()`; the bootstrap swallows exactly
+  those two messages while the class loads, and every other warning still fails
+  the run.
+
+### Documentation
+
+- `docs/Custom-Adapters.md` explains the PHP 8.6 warning and why
+  `AbstractAdapter` is unchanged.
+
 ## [6.0.0] - 2026-11-25
 
 > **If you subclass a bundled adapter** (for example to prefix session ids), read

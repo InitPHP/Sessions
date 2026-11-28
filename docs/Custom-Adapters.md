@@ -93,6 +93,25 @@ final class ArrayAdapter extends AbstractAdapter implements SessionIdInterface, 
 Adapters that extend one of the *bundled* adapters inherit these methods; see
 [Extending a bundled adapter](#extending-a-bundled-adapter).
 
+### PHP 8.6 and `AbstractAdapter`
+
+From PHP 8.6, PHP emits a warning when it links a class that implements
+`SessionHandlerInterface` without `create_sid()` and `validateId()`; these methods
+become required in PHP 9.0. `AbstractAdapter` deliberately does not provide them,
+so a custom adapter that extends it keeps working unchanged, and on PHP 8.6 you may
+see one warning per process the first time the class loads:
+
+```text
+Class InitPHP\Sessions\AbstractAdapter implementing SessionHandlerInterface is missing the create_sid() method which will be required in PHP 9.0
+Class InitPHP\Sessions\AbstractAdapter implementing SessionHandlerInterface is missing the validateId() method which will be required in PHP 9.0
+```
+
+The warning is known and has no runtime effect. If you want strict mode and lazy
+write, implement `SessionUpdateTimestampHandlerInterface` and `SessionIdInterface` in
+your adapter as described above. The package's own test suite silences exactly
+these two messages in `tests/bootstrap.php`, while the class loads, and still fails
+on any other warning.
+
 ## Extending a bundled adapter
 
 The bundled adapters implement `SessionUpdateTimestampHandlerInterface` with
