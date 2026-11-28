@@ -33,11 +33,12 @@ final class AbstractAdapterLoadFilter
     }
 
     /**
-     * Loads {@see AbstractAdapter} with the filter installed.
+     * Loads {@see AbstractAdapter} (or the given class) with the filter installed.
      *
+     * @param class-string|string $class The class to load; defaults to AbstractAdapter.
      * @throws ErrorException On any diagnostic that is not an expected one.
      */
-    public static function load(): void
+    public static function load(string $class = AbstractAdapter::class): void
     {
         $previous = set_error_handler(
             static function (int $errno, string $errstr, string $errfile, int $errline) use (&$previous): bool {
@@ -53,7 +54,7 @@ final class AbstractAdapterLoadFilter
         );
 
         try {
-            class_exists(AbstractAdapter::class);
+            class_exists($class);
         } finally {
             restore_error_handler();
         }

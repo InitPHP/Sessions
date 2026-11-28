@@ -99,7 +99,7 @@ From PHP 8.6, PHP emits a warning when it links a class that implements
 `SessionHandlerInterface` without `create_sid()` and `validateId()`; these methods
 become required in PHP 9.0. `AbstractAdapter` deliberately does not provide them,
 so a custom adapter that extends it keeps working unchanged, and on PHP 8.6 you may
-see one warning per process the first time the class loads:
+see two warnings, once per process, the first time the class loads:
 
 ```text
 Class InitPHP\Sessions\AbstractAdapter implementing SessionHandlerInterface is missing the create_sid() method which will be required in PHP 9.0
