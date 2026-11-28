@@ -69,7 +69,7 @@ echo Session::get('username', 'guest'); // 'admin'
 ## Package metadata
 
 - **License**: MIT
-- **Minimum PHP**: 8.2 (tested on 8.2 – 8.5)
+- **Minimum PHP**: 8.2 (tested on 8.2 – 8.6)
 - **Runtime dependencies**: none (adapters pull in their own extensions)
 - **Packagist**: [`initphp/sessions`](https://packagist.org/packages/initphp/sessions)
 - **Source**: [github.com/InitPHP/Sessions](https://github.com/InitPHP/Sessions)
